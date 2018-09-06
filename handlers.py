@@ -61,18 +61,18 @@ class BaseHandler(CorsMixin, web.RequestHandler):
 
     def get_current_user(self):
         user = None
-        token = self.get_argument("access_token","")
+        token = self.get_argument("access_token", "")
         if not token:
             try:
                 token_str = self.request.headers.get("Authorization")
-                token = token_str.replace("token ","")
+                token = token_str.replace("token ", "")
             except:
                 token = None
 
         if token:
             try:
                 cur = self.application.cur
-                cur.execute('select * from users where token="%s"'%token)
+                cur.execute('select * from users where token="%s"' % token)
                 rows = cur.fetchall()
                 if len(rows) > 0:
                     user = rows[0]
@@ -82,13 +82,11 @@ class BaseHandler(CorsMixin, web.RequestHandler):
             user = None
 
         if not user:
-            self.resp(403,"Please login to get the token")
+            self.resp(403, "Please login to get the token")
         else:
             gen_log.info("get current user, id: %s, email: %s" % (user['user_id'], user['email']))
 
         return user
-
-
 
     '''
     200 OK - API call successfully executed.
@@ -98,7 +96,8 @@ class BaseHandler(CorsMixin, web.RequestHandler):
     408 Timed Out - The server can not communicate with device in a specified time out period.
     500 Server errors - It's usually caused by the unexpected errors of our side.
     '''
-    def resp (self, status_code, meta=None):
+
+    def resp(self, status_code, meta=None):
         if status_code >= 300:
             self.failure_reason = str(meta)
             raise web.HTTPError(status_code)
@@ -106,12 +105,11 @@ class BaseHandler(CorsMixin, web.RequestHandler):
             if isinstance(meta, dict):
                 self.write(meta)
             elif isinstance(meta, list):
-                self.write({"data":meta})
+                self.write({"data": meta})
             elif not meta:
-                self.write({'result':'ok'})
+                self.write({'result': 'ok'})
             else:
                 self.write(meta)
-
 
     def write_error(self, status_code, **kwargs):
         if self.settings.get("serve_traceback") and "exc_info" in kwargs:
@@ -123,38 +121,39 @@ class BaseHandler(CorsMixin, web.RequestHandler):
             self.finish({"error": self.failure_reason, "traceback": lines})
         else:
             try:
-              self.finish({"error": self.failure_reason})
+                self.finish({"error": self.failure_reason})
             except AttributeError:
-              self.finish({"error": "Unknown error occured."})
+                self.finish({"error": "Unknown error occured."})
 
-    def get_uuid (self):
+    def get_uuid(self):
         return str(uuid.uuid4())
 
     def gen_uuid_without_dash(self):
-        return str(uuid.uuid1()).replace('-','')
+        return str(uuid.uuid1()).replace('-', '')
 
-    def gen_token (self, email):
-        return jwt.encode({'email': email,'uuid':self.get_uuid()}, TOKEN_SECRET, algorithm='HS256').split(".")[2]
+    def gen_token(self, email):
+        return jwt.encode({'email': email, 'uuid': self.get_uuid()}, TOKEN_SECRET, algorithm='HS256').split(".")[2]
+
 
 class IndexHandler(BaseHandler):
     @web.authenticated
     def get(self):
-        #DeviceServer.accepted_conns[0].submit_cmd("OTA\r")
+        # DeviceServer.accepted_conns[0].submit_cmd("OTA\r")
         self.resp(400, "Please specify the url as this format: /v1/node/grove_name/property")
+
 
 class TestHandler(web.RequestHandler):
     def get(self):
         self.render("test.html", ip=self.request.remote_ip)
 
 
-
 class UserCreateHandler(BaseHandler):
-    def get (self):
+    def get(self):
         self.resp(404, "Please post to this url")
 
     def post(self):
-        email = self.get_argument("email","")
-        passwd = self.get_argument("password","")
+        email = self.get_argument("email", "")
+        passwd = self.get_argument("password", "")
         if not email:
             self.resp(400, "Missing email information")
             return
@@ -168,16 +167,17 @@ class UserCreateHandler(BaseHandler):
         cur = self.application.cur
         token = self.gen_token(email)
         try:
-            cur.execute('select * from users where email="%s"'%email)
+            cur.execute('select * from users where email="%s"' % email)
             rows = cur.fetchall()
             if len(rows) > 0:
                 self.resp(400, "This email already registered")
                 return
-            cur.execute("INSERT INTO users(user_id,email,pwd,token,created_at) VALUES(?,?,?,?,datetime('now'))", (self.gen_uuid_without_dash(), email, md5.new(passwd).hexdigest(), token))
+            cur.execute("INSERT INTO users(user_id,email,pwd,token,created_at) VALUES(?,?,?,?,datetime('now'))",
+                        (self.gen_uuid_without_dash(), email, md5.new(passwd).hexdigest(), token))
         except web.HTTPError:
             raise
-        except Exception,e:
-            self.resp(500,str(e))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
@@ -186,16 +186,16 @@ class UserCreateHandler(BaseHandler):
 
 
 class ExtUsersHandler(BaseHandler):
-    def get (self, uri):
+    def get(self, uri):
         print uri
         self.resp(404, "Please post to this url")
 
     def post(self, uri):
-        email = self.get_argument("email","")
-        bind_id = self.get_argument("bind_id","")
-        bind_region = self.get_argument("bind_region","")
-        token = self.get_argument("token","")
-        secret = self.get_argument("secret","")
+        email = self.get_argument("email", "")
+        bind_id = self.get_argument("bind_id", "")
+        bind_region = self.get_argument("bind_region", "")
+        token = self.get_argument("token", "")
+        secret = self.get_argument("secret", "")
 
         if secret != server_config.ext_user_secret:
             self.resp(403, "Wrong secret")
@@ -215,7 +215,8 @@ class ExtUsersHandler(BaseHandler):
                 cur.execute('SELECT * FROM users WHERE email=?', (email,))
                 rows = cur.fetchall()
                 if len(rows) > 0:
-                    cur.execute('UPDATE users SET token=?,ext_bind_id=?,ext_bind_region=? WHERE email=?', (token, bind_id, bind_region, email))
+                    cur.execute('UPDATE users SET token=?,ext_bind_id=?,ext_bind_region=? WHERE email=?',
+                                (token, bind_id, bind_region, email))
                 else:
                     create_new = True
             else:
@@ -226,12 +227,13 @@ class ExtUsersHandler(BaseHandler):
                 else:
                     create_new = True
             if create_new:
-                cur.execute("INSERT INTO users(user_id,email,token,ext_bind_id,ext_bind_region,created_at) VALUES(?,?,?,?,?,datetime('now'))",
-                            (self.gen_uuid_without_dash(), email, token, bind_id, bind_region))
+                cur.execute(
+                    "INSERT INTO users(user_id,email,token,ext_bind_id,ext_bind_region,created_at) VALUES(?,?,?,?,?,datetime('now'))",
+                    (self.gen_uuid_without_dash(), email, token, bind_id, bind_region))
         except web.HTTPError:
             raise
-        except Exception,e:
-            self.resp(500,str(e))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
@@ -240,31 +242,32 @@ class ExtUsersHandler(BaseHandler):
 
 
 class UserChangePasswordHandler(BaseHandler):
-    def get (self):
+    def get(self):
         self.resp(403, "Please post to this url")
 
     @web.authenticated
     def post(self):
-        passwd = self.get_argument("password","")
+        passwd = self.get_argument("password", "")
         if not passwd:
             self.resp(400, "Missing new password information")
             return
 
         email = self.current_user["email"]
         token = self.current_user["token"]
-        gen_log.info("%s want to change password with token %s"%(email,token))
+        gen_log.info("%s want to change password with token %s" % (email, token))
 
         cur = self.application.cur
         try:
             new_token = self.gen_token(email)
-            cur.execute('update users set pwd=?,token=? where email=?', (md5.new(passwd).hexdigest(),new_token, email))
+            cur.execute('update users set pwd=?,token=? where email=?', (md5.new(passwd).hexdigest(), new_token, email))
             self.resp(200, meta={"token": new_token})
-            gen_log.info("%s succeed to change password"%(email))
-        except Exception,e:
-            self.resp(500,str(e))
+            gen_log.info("%s succeed to change password" % (email))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
+
 
 class UserRetrievePasswordHandler(BaseHandler):
     def get(self):
@@ -274,7 +277,7 @@ class UserRetrievePasswordHandler(BaseHandler):
         self.retrieve()
 
     def retrieve(self):
-        email = self.get_argument('email','')
+        email = self.get_argument('email', '')
         if not email:
             self.resp(400, "You must specify the email of the account which you want to retrieve password.")
             return
@@ -283,7 +286,7 @@ class UserRetrievePasswordHandler(BaseHandler):
             self.resp(400, "Bad email address")
             return
 
-        gen_log.info("%s want to retrieve password"%(email))
+        gen_log.info("%s want to retrieve password" % (email))
 
         cur = self.application.cur
         try:
@@ -296,20 +299,19 @@ class UserRetrievePasswordHandler(BaseHandler):
             new_password = self.gen_token(email)[0:6]
             cur.execute('update users set pwd=? where email=?', (md5.new(new_password).hexdigest(), email))
 
-            #start a thread sending email here
+            # start a thread sending email here
             ioloop.IOLoop.current().add_callback(self.start_thread_send_email, email, new_password)
 
             self.resp(200)
         except web.HTTPError:
             raise
-        except Exception,e:
+        except Exception, e:
             self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
 
-
-    def start_thread_send_email (self, email, new_password):
+    def start_thread_send_email(self, email, new_password):
         thread_name = "email_thread-" + str(email)
         li = threading.enumerate()
         for l in li:
@@ -318,14 +320,13 @@ class UserRetrievePasswordHandler(BaseHandler):
                 return
 
         threading.Thread(target=self.email_sending_thread, name=thread_name,
-            args=(email, new_password)).start()
+                         args=(email, new_password)).start()
 
-
-    def email_sending_thread (self, email, new_password):
+    def email_sending_thread(self, email, new_password):
         s = smtplib.SMTP_SSL(server_config.smtp_server)
         try:
             s.login(server_config.smtp_user, server_config.smtp_pwd)
-        except Exception,e:
+        except Exception, e:
             gen_log.error(e)
             return
 
@@ -350,15 +351,14 @@ IOT Team from Seeed
 """ % (sender, receiver, new_password)
         try:
             s.sendmail(sender, receiver, message)
-        except Exception,e:
+        except Exception, e:
             gen_log.error(e)
             return
         gen_log.info('sent new password %s to %s' % (new_password, email))
 
 
-
 class UserLoginHandler(BaseHandler):
-    def get (self):
+    def get(self):
         self.resp(403, "Please post to this url")
 
     def post(self):
@@ -370,8 +370,8 @@ class UserLoginHandler(BaseHandler):
             except ValueError:
                 self.resp(400, 'Unable to parse JSON.')
         else:
-            email = self.get_argument("email","")
-            passwd = self.get_argument("password","")
+            email = self.get_argument("email", "")
+            passwd = self.get_argument("password", "")
 
         if not email:
             self.resp(400, "Missing email information")
@@ -393,15 +393,16 @@ class UserLoginHandler(BaseHandler):
             self.resp(200, meta={"token": row["token"], "user_id": row["user_id"]})
         except web.HTTPError:
             raise
-        except Exception,e:
-            self.resp(500,str(e))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
 
+
 class DriversHandler(BaseHandler):
     @web.authenticated
-    def get (self):
+    def get(self):
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
         json_drivers = {}
         with open(os.path.join(cur_dir, "drivers.json")) as f:
@@ -412,48 +413,47 @@ class DriversHandler(BaseHandler):
     def post(self):
         self.resp(403, "Please get this url")
 
+
 class DriversStatusHandler(BaseHandler):
     @web.authenticated
-    def get (self):
+    def get(self):
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
         scan_status = {}
         with open(os.path.join(cur_dir, "scan_status.json")) as f:
             scan_status = json.load(f)
         self.resp(200, meta=scan_status)
 
-
     @web.authenticated
     def post(self):
         self.resp(403, "Please get this url")
 
+
 class BoardsListHandler(BaseHandler):
     @web.authenticated
-    def get (self):
+    def get(self):
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
         boards = []
         with open(os.path.join(cur_dir, "boards.json")) as f:
             boards = json.load(f)
         self.resp(200, meta={"boards": boards})
 
-
     @web.authenticated
     def post(self):
         self.resp(403, "Please get this url")
 
 
-
 class NodeCreateHandler(BaseHandler):
-    def get (self):
+    def get(self):
         self.resp(404, "Please post to this url")
 
     @web.authenticated
     def post(self):
-        node_name = self.get_argument("name","").strip()
+        node_name = self.get_argument("name", "").strip()
         if not node_name:
             self.resp(400, "Missing node name information")
             return
 
-        board = self.get_argument("board","").strip()
+        board = self.get_argument("board", "").strip()
         if not board:
             board = "Wio Link v1.0"
 
@@ -462,25 +462,26 @@ class NodeCreateHandler(BaseHandler):
         user_id = user["user_id"]
         node_id = self.gen_uuid_without_dash()
         node_sn = md5.new(self.get_uuid()).hexdigest()
-        node_key = md5.new(self.gen_token(email)).hexdigest()  #we need the key to be 32bytes long too
+        node_key = md5.new(self.gen_token(email)).hexdigest()  # we need the key to be 32bytes long too
 
         cur = self.application.cur
         try:
-            cur.execute("INSERT INTO nodes(node_id,user_id,node_sn,name,private_key,board) VALUES(?,?,?,?,?,?)", (node_id, user_id, node_sn,node_name, node_key, board))
-            self.resp(200, meta={"node_sn":node_sn,"node_key": node_key})
-        except Exception,e:
-            self.resp(500,str(e))
+            cur.execute("INSERT INTO nodes(node_id,user_id,node_sn,name,private_key,board) VALUES(?,?,?,?,?,?)",
+                        (node_id, user_id, node_sn, node_name, node_key, board))
+            self.resp(200, meta={"node_sn": node_sn, "node_key": node_key})
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
 
 
 class NodeListHandler(BaseHandler):
-    def initialize (self, conns):
+    def initialize(self, conns):
         self.conns = conns
 
     @web.authenticated
-    def get (self):
+    def get(self):
         user = self.current_user
         email = user["email"]
         user_id = user["user_id"]
@@ -497,28 +498,30 @@ class NodeListHandler(BaseHandler):
                     if conn.online_status == True:
                         online = True
                 board = r["board"] if r["board"] else "Wio Link v1.0"
-                nodes.append({"name":r["name"], "node_sn":r["node_sn"], "node_key":r['private_key'], "online":online, \
-                              "dataxserver":r["dataxserver"], "board":board})
-            self.resp(200, meta={"nodes":nodes})
-        except Exception,e:
-            self.resp(500,str(e))
+                nodes.append(
+                    {"name": r["name"], "node_sn": r["node_sn"], "node_key": r['private_key'], "online": online, \
+                     "dataxserver": r["dataxserver"], "board": board})
+            self.resp(200, meta={"nodes": nodes})
+        except Exception, e:
+            self.resp(500, str(e))
             return
 
     def post(self):
         self.resp(404, "Please get this url")
 
+
 class NodeRenameHandler(BaseHandler):
-    def get (self):
+    def get(self):
         self.resp(404, "Please post to this url")
 
     @web.authenticated
     def post(self):
-        node_sn = self.get_argument("node_sn","").strip()
+        node_sn = self.get_argument("node_sn", "").strip()
         if not node_sn:
             self.resp(400, "Missing node sn information")
             return
 
-        new_node_name = self.get_argument("name","").strip()
+        new_node_name = self.get_argument("name", "").strip()
         gen_log.debug('node %s wants to change its name to %s' % (node_sn, new_node_name))
         if not new_node_name:
             self.resp(400, "Missing node name information")
@@ -526,27 +529,28 @@ class NodeRenameHandler(BaseHandler):
 
         cur = self.application.cur
         try:
-            cur.execute("UPDATE nodes set name=? WHERE node_sn=?" , (new_node_name, node_sn))
+            cur.execute("UPDATE nodes set name=? WHERE node_sn=?", (new_node_name, node_sn))
             if cur.rowcount > 0:
                 self.resp(200)
             else:
                 self.resp(400, "Node not exist")
         except web.HTTPError:
             raise
-        except Exception,e:
-            self.resp(500,str(e))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
 
+
 class NodeDeleteHandler(BaseHandler):
     @web.authenticated
-    def get (self):
+    def get(self):
         self.resp(404, "Please post to this url")
 
     @web.authenticated
     def post(self):
-        node_sn = self.get_argument("node_sn","").strip()
+        node_sn = self.get_argument("node_sn", "").strip()
         if not node_sn:
             self.resp(400, "Missing node sn information")
             return
@@ -560,8 +564,8 @@ class NodeDeleteHandler(BaseHandler):
             rows = cur.fetchall()
             if len(rows) > 0:
                 node_id = rows[0]['node_id']
-                cur.execute("delete from resources where node_id=?", (node_id, ))
-                cur.execute("delete from nodes where node_id=?", (node_id, ))
+                cur.execute("delete from resources where node_id=?", (node_id,))
+                cur.execute("delete from nodes where node_id=?", (node_id,))
                 if cur.rowcount > 0:
                     self.resp(200)
                 else:
@@ -571,15 +575,15 @@ class NodeDeleteHandler(BaseHandler):
 
         except web.HTTPError:
             raise
-        except Exception,e:
-            self.resp(500,str(e))
+        except Exception, e:
+            self.resp(500, str(e))
             return
         finally:
             self.application.conn.commit()
 
-class NodeBaseHandler(BaseHandler):
 
-    def initialize (self, conns, state_waiters, state_happened):
+class NodeBaseHandler(BaseHandler):
+    def initialize(self, conns, state_waiters, state_happened):
         self.conns = conns
         self.state_waiters = state_waiters
         self.state_happened = state_happened
@@ -587,20 +591,20 @@ class NodeBaseHandler(BaseHandler):
     def get_current_user(self):
         return None
 
-    def get_node (self):
+    def get_node(self):
         node = None
-        token = self.get_argument("access_token","")
+        token = self.get_argument("access_token", "")
         if not token:
             try:
                 token_str = self.request.headers.get("Authorization")
-                token = token_str.replace("token ","")
+                token = token_str.replace("token ", "")
             except:
                 token = None
-        gen_log.debug("node token:"+ str(token))
+        gen_log.debug("node token:" + str(token))
         if token:
             try:
                 cur = self.application.cur
-                cur.execute('select * from nodes where private_key="%s"'%token)
+                cur.execute('select * from nodes where private_key="%s"' % token)
                 rows = cur.fetchall()
                 if len(rows) > 0:
                     node = rows[0]
@@ -610,33 +614,29 @@ class NodeBaseHandler(BaseHandler):
             node = None
 
         if not node:
-            self.resp(403,"Please attach the valid node token (not the user token)")
+            self.resp(403, "Please attach the valid node token (not the user token)")
         else:
-            gen_log.debug("get current node, id: %s, name: %s" % (node['node_id'],node["name"]))
+            gen_log.debug("get current node, id: %s, name: %s" % (node['node_id'], node["name"]))
 
         return node
 
 
-
 class NodeReadWriteHandler(NodeBaseHandler):
-
     @gen.coroutine
     def pre_request(self, req_type, uri):
         return True
 
     @gen.coroutine
     def post_request(self, req_type, uri, resp):
-        #append node name to the response of .well-known
+        # append node name to the response of .well-known
         if req_type == 'get' and uri.find('.well-known') >= 0 and 'msg' in resp and type(resp['msg']) == dict:
             resp['msg']['name'] = self.node['name']
-
 
     @gen.coroutine
     def get(self, uri):
 
         uri = uri.split("?")[0]
-        gen_log.debug("get: "+ str(uri))
-
+        gen_log.debug("get: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -650,28 +650,28 @@ class NodeReadWriteHandler(NodeBaseHandler):
             conn = self.conns[node['node_sn']]
             if not conn.killed:
                 try:
-                    cmd = "GET /%s\r\n"%(uri)
+                    cmd = "GET /%s\r\n" % (uri)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_get")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_get")
                     if ok:
                         self.post_request('get', uri, resp)
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
         self.resp(404, "Node is offline")
 
     @gen.coroutine
-    def post (self, uri):
+    def post(self, uri):
 
         uri = uri.split("?")[0].rstrip("/")
-        gen_log.info("post to: "+ str(uri))
+        gen_log.info("post to: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -689,31 +689,31 @@ class NodeReadWriteHandler(NodeBaseHandler):
             conn = self.conns[node['node_sn']]
             if not conn.killed:
                 try:
-                    cmd = "POST /%s\r\n"%(uri)
+                    cmd = "POST /%s\r\n" % (uri)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_post")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_post")
                     if ok:
                         self.post_request('post', uri, resp)
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
 
         self.resp(404, "Node is offline")
 
-class NodeFunctionHandler(NodeReadWriteHandler):
 
+class NodeFunctionHandler(NodeReadWriteHandler):
     @gen.coroutine
-    def post (self, uri):
+    def post(self, uri):
 
         uri = uri.split("?")[0].rstrip("/")
-        gen_log.info("post to: "+ str(uri))
+        gen_log.info("post to: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -746,24 +746,23 @@ class NodeFunctionHandler(NodeReadWriteHandler):
             conn = self.conns[self.node['node_sn']]
             if not conn.killed:
                 try:
-                    cmd = "POST /%s/%s\r\n"%(uri.strip('/'), arg)
+                    cmd = "POST /%s/%s\r\n" % (uri.strip('/'), arg)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_post")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_post")
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
         self.resp(404, "Node is offline")
 
 
 class NodeSettingHandler(NodeReadWriteHandler):
-
     def pre_request(self, req_type, uri):
         if req_type == 'post' and uri.find('setting/dataxserver') >= 0:
             ips = re.findall(r'.*/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', uri)
@@ -790,22 +789,22 @@ class NodeSettingHandler(NodeReadWriteHandler):
 
     def post_request(self, req_type, uri, resp):
         if req_type == 'post' and uri.find('setting/dataxserver') >= 0:
-            #ips = re.findall(r'.*/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', uri)
+            # ips = re.findall(r'.*/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', uri)
             url = self.get_argument('dataxurl', '')
             if url:
-                #print url
+                # print url
                 gen_log.debug('node %s want to change data x server to %s' % (self.node['node_id'], url))
                 try:
                     cur = self.application.cur
                     cur.execute('update nodes set dataxserver=? where node_id=?', (url, self.node['node_id']))
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 finally:
                     self.application.conn.commit()
 
 
 class NodeEventHandler(websocket.WebSocketHandler):
-    def initialize (self, conns):
+    def initialize(self, conns):
         self.conns = conns
         self.cur_conn = None
         self.node_key = None
@@ -840,7 +839,7 @@ class NodeEventHandler(websocket.WebSocketHandler):
     def on_message(self, message):
         self.node_key = message
         if len(message) != 32:
-            self.write_message({"error":"invalid node sn "})
+            self.write_message({"error": "invalid node sn "})
             self.connected = False
             self.close()
 
@@ -851,7 +850,7 @@ class NodeEventHandler(websocket.WebSocketHandler):
             return
 
         self.node_sn = self.cur_conn.sn
-        
+
         IOLoop.current().add_callback(self.fetch_event)
 
     @gen.coroutine
@@ -867,7 +866,7 @@ class NodeEventHandler(websocket.WebSocketHandler):
                     self.cur_conn = self.conns[self.node_sn]
                 else:
                     self.cur_conn = None
-                
+
                 if not self.cur_conn:
                     self.node_offline()
                     break
@@ -876,10 +875,10 @@ class NodeEventHandler(websocket.WebSocketHandler):
             if event:
                 self.write_message(event)
             yield gen.moment
-        
+
     def node_offline(self):
         try:
-            self.write_message({"error":"node is offline"})
+            self.write_message({"error": "node is offline"})
         except:
             pass
         self.connected = False
@@ -887,7 +886,6 @@ class NodeEventHandler(websocket.WebSocketHandler):
 
 
 class NodeGetConfigHandler(NodeBaseHandler):
-
     def get(self):
         node = self.get_node()
         if not node:
@@ -898,7 +896,7 @@ class NodeGetConfigHandler(NodeBaseHandler):
         node_sn = node["node_sn"]
 
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
-        user_build_dir = cur_dir + '/users_build/' + str(user_id)  + '_' + node_sn
+        user_build_dir = cur_dir + '/users_build/' + str(user_id) + '_' + node_sn
         if not os.path.exists(user_build_dir):
             self.resp(404, "Config not found")
             return
@@ -906,29 +904,27 @@ class NodeGetConfigHandler(NodeBaseHandler):
         try:
             # try to fine connection_config.json first
             json_file = open("%s/connection_config.json" % user_build_dir, 'r')
-            self.resp(200,  meta={"config":json.load(json_file), "type":"json"})
+            self.resp(200, meta={"config": json.load(json_file), "type": "json"})
             json_file.close()
             return
-        except Exception,e:
-            gen_log.warn("Exception when reading json file:"+ str(e))
+        except Exception, e:
+            gen_log.warn("Exception when reading json file:" + str(e))
 
         try:
             # fall back to old version connection_config.yaml
             yaml_file = open("%s/connection_config.yaml" % user_build_dir, 'r')
-            self.resp(200, meta={"config": yaml_file.read(), "type":"yaml"})
+            self.resp(200, meta={"config": yaml_file.read(), "type": "yaml"})
             yaml_file.close()
             return
-        except Exception,e:
+        except Exception, e:
             gen_log.error("Exception when reading yaml file:" + str(e))
             self.resp(404, "Config not found")
-
 
     def post(self):
         self.resp(404, "Please get this url")
 
 
 class NodeGetResourcesHandler(NodeBaseHandler):
-
     vhost_url_base = 'https://iot.seeed.cc'
 
     def prepare_data_for_template(self, node, grove_instance_name, grove, grove_doc):
@@ -937,14 +933,14 @@ class NodeGetResourcesHandler(NodeBaseHandler):
         events = []
 
         methods_doc = grove_doc['Methods']
-        #read functions
+        # read functions
         for fun in grove['Reads'].items():
             item = {}
             item['type'] = 'GET'
-            #build read arg
+            # build read arg
             arguments = []
             arguments_name = []
-            method_name = fun[0].replace('read_','')
+            method_name = fun[0].replace('read_', '')
             url = self.vhost_url_base + '/v1/node/' + grove_instance_name + '/' + method_name
             arg_list = fun[1]['Arguments']
             for arg in arg_list:
@@ -970,8 +966,7 @@ class NodeGetResourcesHandler(NodeBaseHandler):
             if fun[0] in methods_doc and '@brief@' in methods_doc[fun[0]]:
                 item['brief'] = methods_doc[fun[0]]['@brief@']
 
-
-            #build returns
+            # build returns
             returns = ""
             return_docs = []
             arg_list = fun[1]['Returns']
@@ -986,7 +981,6 @@ class NodeGetResourcesHandler(NodeBaseHandler):
                     comment = ", " + methods_doc[fun[0]][name]
                     return_docs.append('%s: %s value%s' % (name, t, comment))
 
-
             returns = returns.rstrip(',')
             item['returns'] = returns
             item['return_docs'] = return_docs
@@ -997,12 +991,12 @@ class NodeGetResourcesHandler(NodeBaseHandler):
         for fun in grove['Writes'].items():
             item = {}
             item['type'] = 'POST'
-            #build write arg
+            # build write arg
             arguments = []
             arguments_name = []
-            method_name = fun[0].replace('write_','')
+            method_name = fun[0].replace('write_', '')
             url = self.vhost_url_base + '/v1/node/' + grove_instance_name + '/' + method_name
-            #arg_list = [arg for arg in fun[1] if arg.find("*")<0]  #find out the ones havent "*"
+            # arg_list = [arg for arg in fun[1] if arg.find("*")<0]  #find out the ones havent "*"
             arg_list = fun[1]['Arguments']
             for arg in arg_list:
                 if not arg:
@@ -1032,12 +1026,12 @@ class NodeGetResourcesHandler(NodeBaseHandler):
         if grove['HasEvent']:
             for ev in grove['Events']:
                 if ev in grove_doc['Events']:
-                    events.append({'event_name':ev, 'event_data_type':grove['Events'][ev], 'event_desc':grove_doc['Events'][ev]})
+                    events.append({'event_name': ev, 'event_data_type': grove['Events'][ev],
+                                   'event_desc': grove_doc['Events'][ev]})
                 else:
-                    events.append({'event_name':ev, 'event_data_type':grove['Events'][ev], 'event_desc': ''})
+                    events.append({'event_name': ev, 'event_data_type': grove['Events'][ev], 'event_desc': ''})
 
         return (data, events)
-
 
     def get(self):
         node = self.get_node()
@@ -1057,7 +1051,7 @@ class NodeGetResourcesHandler(NodeBaseHandler):
             self.resp(404, "Configuration file not found")
             return
 
-        #adjust the vhost
+        # adjust the vhost
         self.vhost_url_base = server_config.vhost_url_base.rstrip('/')
 
         if not self.vhost_url_base:
@@ -1068,37 +1062,38 @@ class NodeGetResourcesHandler(NodeBaseHandler):
             self.vhost_url_base = '%s://%s' % (protocol, self.request.host)
 
         self.vhost_url_base = self.get_argument("data_server", self.vhost_url_base)
-        self.vhost_url_base = escape.url_unescape(self.vhost_url_base.rstrip('/'))  ##fix apache mod_proxy double-quote the URL for some deployment env
-        #print self.vhost_url_base
+        self.vhost_url_base = escape.url_unescape(
+            self.vhost_url_base.rstrip('/'))  ##fix apache mod_proxy double-quote the URL for some deployment env
+        # print self.vhost_url_base
 
         patt = r'^(?=^.{3,255}$)(http(s)?:\/\/)?(www\.)?[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+(:\d+)*(\/\w+\.\w+)*$'
         if not re.match(patt, self.vhost_url_base):
             self.write("Bad format of parameter data_server. Should be: http[s]://domain-or-ip-address[:port]")
             return
 
-        #if self.vhost_url_base.find('http') < 0:
+        # if self.vhost_url_base.find('http') < 0:
         #    self.vhost_url_base = 'https://'+self.vhost_url_base
-        #print self.vhost_url_base
+        # print self.vhost_url_base
 
 
-        #open the yaml file for reading
+        # open the yaml file for reading
         try:
-            config_file = open('%s/connection_config.yaml'%user_build_dir,'r')
-        except Exception,e:
-            gen_log.error("Exception when reading yaml file:"+ str(e))
+            config_file = open('%s/connection_config.yaml' % user_build_dir, 'r')
+        except Exception, e:
+            gen_log.error("Exception when reading yaml file:" + str(e))
             self.resp(404, "No resources, the node has not been configured jet.")
             return
 
-        #open the json file for reading
+        # open the json file for reading
         try:
-            drv_db_file = open('%s/drivers.json' % cur_dir,'r')
-            drv_doc_file= open('%s/driver_docs.json' % cur_dir,'r')
-        except Exception,e:
-            gen_log.error("Exception when reading grove drivers database file:"+ str(e))
+            drv_db_file = open('%s/drivers.json' % cur_dir, 'r')
+            drv_doc_file = open('%s/driver_docs.json' % cur_dir, 'r')
+        except Exception, e:
+            gen_log.error("Exception when reading grove drivers database file:" + str(e))
             self.resp(404, "Internal error, the grove drivers database file is corrupted.")
             return
 
-        #calculate the checksum of 2 file
+        # calculate the checksum of 2 file
         sha1 = hashlib.sha1()
         sha1.update(config_file.read() + self.vhost_url_base)
         chksum_config = sha1.hexdigest()
@@ -1106,11 +1101,11 @@ class NodeGetResourcesHandler(NodeBaseHandler):
         sha1.update(drv_db_file.read() + drv_doc_file.read())
         chksum_drv_db = sha1.hexdigest()
 
-        #query the database, if 2 file not changed, echo cached html
+        # query the database, if 2 file not changed, echo cached html
         resource = None
         try:
             cur = self.application.cur
-            cur.execute('select * from resources where node_id="%s"'%node_id)
+            cur.execute('select * from resources where node_id="%s"' % node_id)
             rows = cur.fetchall()
             if len(rows) > 0:
                 resource = rows[0]
@@ -1125,39 +1120,39 @@ class NodeGetResourcesHandler(NodeBaseHandler):
 
         gen_log.info("re-render the resource page for node_id: %s" % node_id)
 
-        #else render new resource page
-        #load the yaml file into object
+        # else render new resource page
+        # load the yaml file into object
         config_file.seek(0)
         drv_db_file.seek(0)
         drv_doc_file.seek(0)
         try:
             config = yaml.load(config_file)
         except yaml.YAMLError, err:
-            gen_log.error("Error in parsing yaml file:"+ str(err))
+            gen_log.error("Error in parsing yaml file:" + str(err))
             self.resp(404, "No resources, the configuration file is corrupted.")
             return
         except web.HTTPError:
             raise
-        except Exception,e:
-            gen_log.error("Error in loading yaml file:"+ str(e))
+        except Exception, e:
+            gen_log.error("Error in loading yaml file:" + str(e))
             self.resp(404, "No resources, the configuration file is corrupted.")
             return
         finally:
             config_file.close()
 
-        #load the json file into object
+        # load the json file into object
         try:
             drv_db = json.load(drv_db_file)
             drv_docs = json.load(drv_doc_file)
-        except Exception,e:
-            gen_log.error("Error in parsing grove drivers database file:"+ str(e))
+        except Exception, e:
+            gen_log.error("Error in parsing grove drivers database file:" + str(e))
             self.resp(404, "Internal error, the grove drivers database file is corrupted.")
             return
         finally:
             drv_db_file.close()
             drv_doc_file.close()
 
-        #prepare resource data structs
+        # prepare resource data structs
         data = []
         events = []
 
@@ -1176,49 +1171,48 @@ class NodeGetResourcesHandler(NodeBaseHandler):
                 if grove:
                     grove_doc = find_grove_in_docs_db(grove['ID'], drv_docs)
                     if grove_doc:
-                        d, e = self.prepare_data_for_template(node,grove_instance_name,grove,grove_doc)
+                        d, e = self.prepare_data_for_template(node, grove_instance_name, grove, grove_doc)
                         data += d
                         events += e
 
-                    else:  #if grove_doc
-                        error_msg = "Error, cannot find %s in grove driver documentation database file."%grove_instance_name
+                    else:  # if grove_doc
+                        error_msg = "Error, cannot find %s in grove driver documentation database file." % grove_instance_name
                         gen_log.error(error_msg)
                         self.resp(404, error_msg)
                         return
 
-                else:  #if grove
-                    error_msg = "Error, cannot find %s in grove drivers database file."%grove_instance_name
+                else:  # if grove
+                    error_msg = "Error, cannot find %s in grove drivers database file." % grove_instance_name
                     gen_log.error(error_msg)
                     self.resp(404, error_msg)
                     return
 
-        #render the template
+        # render the template
         ws_domain = self.vhost_url_base.replace('https:', 'wss:')
         ws_domain = ws_domain.replace('http:', 'ws:')
-        #print data
-        #print events
-        #print node_key
-        page = self.render_string('resources.html', node_name = node_name, events = events, data = data,
-                                  node_key = node_key , url_base = self.vhost_url_base, ws_domain=ws_domain)
+        # print data
+        # print events
+        # print node_key
+        page = self.render_string('resources.html', node_name=node_name, events=events, data=data,
+                                  node_key=node_key, url_base=self.vhost_url_base, ws_domain=ws_domain)
 
-        #store the page html into database
+        # store the page html into database
         try:
             cur = self.application.cur
             if resource:
                 cur.execute('update resources set chksum_config=?,chksum_dbjson=?,render_content=? where node_id=?',
                             (chksum_config, chksum_drv_db, page, node_id))
             else:
-                cur.execute('insert into resources (node_id, chksum_config, chksum_dbjson, render_content) values(?,?,?,?)',
-                            (node_id, chksum_config, chksum_drv_db, page))
+                cur.execute(
+                    'insert into resources (node_id, chksum_config, chksum_dbjson, render_content) values(?,?,?,?)',
+                    (node_id, chksum_config, chksum_drv_db, page))
         except:
             resource = None
         finally:
             self.application.conn.commit()
 
-        #echo out
+        # echo out
         self.write(page)
-
-
 
     def post(self):
         self.resp(404, "Please get this url")
@@ -1230,7 +1224,7 @@ class FirmwareBuildingHandler(NodeBaseHandler):
 
     """
 
-    def get (self):
+    def get(self):
         self.resp(404, "Please post to this url")
 
     @gen.coroutine
@@ -1256,16 +1250,15 @@ class FirmwareBuildingHandler(NodeBaseHandler):
         if not os.path.exists(user_build_dir):
             os.makedirs(user_build_dir)
 
-        phase = self.get_argument("build_phase","")
-        build_phase = [1,2]
+        phase = self.get_argument("build_phase", "")
+        build_phase = [1, 2]
         if phase == '1':
             build_phase = [1]
         elif phase == '2':
             build_phase = [2]
         elif phase == '3':
-            build_phase = [1,2]
+            build_phase = [1, 2]
         self.build_phase = build_phase
-
 
         ### prepare the config file or config json object
         json_connections = None
@@ -1273,14 +1266,14 @@ class FirmwareBuildingHandler(NodeBaseHandler):
 
         if 1 in build_phase:
             if self.request.headers.get("content-type") and self.request.headers.get("content-type").find("json") > 0:
-                #try json first
+                # try json first
                 gen_log.debug("json request")
                 gen_log.debug(type(self.request.body))
                 gen_log.debug(self.request.body)
 
                 try:
                     json_connections = json.loads(self.request.body)
-                except Exception,e:
+                except Exception, e:
                     self.resp(400, 'invalid json: ' + str(e))
                     return
 
@@ -1293,8 +1286,8 @@ class FirmwareBuildingHandler(NodeBaseHandler):
                 with open("%s/connection_config.json" % user_build_dir, 'wr') as f:
                     f.write(json.dumps(json_connections))
             else:
-                #fall back to old version yaml config file
-                yaml = self.get_argument("yaml","")
+                # fall back to old version yaml config file
+                yaml = self.get_argument("yaml", "")
                 if not yaml:
                     self.resp(400, "Missing yaml information")
                     return
@@ -1310,29 +1303,28 @@ class FirmwareBuildingHandler(NodeBaseHandler):
                     self.resp(400, "no valid yaml provided")
                     return
 
-
                 with open("%s/connection_config.yaml" % user_build_dir, 'wr') as f:
                     f.write(yaml)
 
         ### start to compile
         # always overwrite the Makefile
-        copy('%s/Makefile.template'%cur_dir, '%s/Makefile'%user_build_dir)
+        copy('%s/Makefile.template' % cur_dir, '%s/Makefile' % user_build_dir)
 
-        #try to get the current running app number
+        # try to get the current running app number
         app_num = 'ALL'
         if 2 in build_phase:
             try:
                 cmd = "APP\r\n"
-                ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_app")
-                if ok and resp['msg'] in [1,2,'1','2']:
-                    app_num = '1' if resp['msg'] in [2,'2'] else '2'
+                ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_app")
+                if ok and resp['msg'] in [1, 2, '1', '2']:
+                    app_num = '1' if resp['msg'] in [2, '2'] else '2'
                     gen_log.info('Get to know node %s is running app %s' % (self.node_id, resp['msg']))
                 else:
                     gen_log.warn('Failed while getting app number for node %s: %s' % (self.node_id, str(resp)))
-            except Exception,e:
+            except Exception, e:
                 gen_log.error(e)
 
-        #try to create a thread
+        # try to create a thread
         thread_name = "build_thread_" + self.node_sn
         li = threading.enumerate()
         for l in li:
@@ -1344,36 +1336,36 @@ class FirmwareBuildingHandler(NodeBaseHandler):
                 return
 
         threading.Thread(target=self.build_thread, name=thread_name,
-                         args=(build_phase, app_num, self.user_id, self.node_name, self.node_sn, json_drivers, json_connections)).start()
+                         args=(build_phase, app_num, self.user_id, self.node_name, self.node_sn, json_drivers,
+                               json_connections)).start()
 
-        #clear the possible old state recv during last ota process
+        # clear the possible old state recv during last ota process
         try:
             self.state_happened[self.node_sn] = []
             self.state_waiters[self.node_sn] = []
-        except Exception,e:
+        except Exception, e:
             pass
 
-        #log the building
+        # log the building
         if 2 in build_phase:
             try:
                 cur = self.application.cur
                 cur.execute("insert into builds (node_id, build_date, build_starttime, build_endtime) \
-                            values(?,date('now'),datetime('now'),datetime('now'))", (self.node_id, ))
+                            values(?,date('now'),datetime('now'),datetime('now'))", (self.node_id,))
                 self.cur_build_id = cur.lastrowid
-            except Exception,e:
+            except Exception, e:
                 gen_log.error("Failed to log the building record: %s" % str(e))
             finally:
                 self.application.conn.commit()
 
-        #echo the response first
+        # echo the response first
         if 2 in build_phase:
-            self.resp(200,meta={'ota_status': "going", "ota_msg": "Building the firmware..."})
+            self.resp(200, meta={'ota_status': "going", "ota_msg": "Building the firmware..."})
         elif 1 in build_phase:
-            self.resp(200,meta={'ota_status': "going", "ota_msg": "Generating the files..."})
-
+            self.resp(200, meta={'ota_status': "going", "ota_msg": "Generating the files..."})
 
     @gen.coroutine
-    def build_thread (self, build_phase, app_num, user_id, node_name, node_sn, json_drivers, json_connections):
+    def build_thread(self, build_phase, app_num, user_id, node_name, node_sn, json_drivers, json_connections):
 
         node_name = node_name.encode('unicode_escape').replace('\\u', 'x')
 
@@ -1381,7 +1373,8 @@ class FirmwareBuildingHandler(NodeBaseHandler):
 
         set_build_verbose(False)
 
-        if not gen_and_build(build_phase, app_num, str(user_id), node_sn, node_name, '', json_drivers, json_connections):
+        if not gen_and_build(build_phase, app_num, str(user_id), node_sn, node_name, '', json_drivers,
+                             json_connections):
             error_msg = get_error_msg()
             result = ("error", error_msg)
         else:
@@ -1395,11 +1388,11 @@ class FirmwareBuildingHandler(NodeBaseHandler):
         if result[0] != "ok":
             gen_log.error(result[1])
             self.send_notification(result)
-            #delete the failed record
+            # delete the failed record
             try:
                 cur = self.application.cur
-                cur.execute("delete from builds where bld_id=?", (self.cur_build_id, ))
-            except Exception,e:
+                cur.execute("delete from builds where bld_id=?", (self.cur_build_id,))
+            except Exception, e:
                 gen_log.error("Failed to delete the building record: %s" % str(e))
             finally:
                 self.application.conn.commit()
@@ -1410,16 +1403,16 @@ class FirmwareBuildingHandler(NodeBaseHandler):
             self.send_notification(('done', 'Source file generated.'))
             return
 
-        #update the build end time
+        # update the build end time
         try:
             cur = self.application.cur
-            cur.execute("update builds set build_endtime=datetime('now') where bld_id=?", (self.cur_build_id, ))
-        except Exception,e:
+            cur.execute("update builds set build_endtime=datetime('now') where bld_id=?", (self.cur_build_id,))
+        except Exception, e:
             gen_log.error("Failed to log the building record: %s" % str(e))
         finally:
             self.application.conn.commit()
 
-        #query the connection status again
+        # query the connection status again
         if self.node_sn in self.conns:
             self.cur_conn = self.conns[self.node_sn]
         else:
@@ -1430,7 +1423,7 @@ class FirmwareBuildingHandler(NodeBaseHandler):
 
         # go OTA
         retries = 0
-        while(retries < 3 and not self.cur_conn.killed):
+        while (retries < 3 and not self.cur_conn.killed):
             try:
                 state = ("going", "Notifying the node...[%d]" % retries)
                 self.send_notification(state)
@@ -1441,14 +1434,15 @@ class FirmwareBuildingHandler(NodeBaseHandler):
                 cmd = cmd.encode("ascii")
                 self.cur_conn.submit_cmd(cmd)
 
-                yield gen.with_timeout(timedelta(seconds=10), self.cur_conn.ota_notify_done_future, io_loop=ioloop.IOLoop.current())
+                yield gen.with_timeout(timedelta(seconds=10), self.cur_conn.ota_notify_done_future,
+                                       io_loop=ioloop.IOLoop.current())
                 break
             except gen.TimeoutError:
                 pass
-            except Exception,e:
+            except Exception, e:
                 gen_log.error(e)
-                #save state
-                state = ("error", "notify error: "+str(e))
+                # save state
+                state = ("error", "notify error: " + str(e))
                 self.send_notification(state)
                 return
             retries = retries + 1
@@ -1472,12 +1466,9 @@ class FirmwareBuildingHandler(NodeBaseHandler):
             self.state_happened[self.node_sn] = [state]
 
 
-
-
 class OTAStatusReportingHandler(NodeBaseHandler):
-
     @gen.coroutine
-    def post (self):
+    def post(self):
         self.resp(404, "Please get this url")
 
     @gen.coroutine
@@ -1503,9 +1494,8 @@ class OTAStatusReportingHandler(NodeBaseHandler):
             else:
                 self.state_waiters[self.node_sn] = [state_future]
 
-
         if not state and state_future:
-            #print state_future
+            # print state_future
             try:
                 state = yield gen.with_timeout(timedelta(seconds=180), state_future, io_loop=ioloop.IOLoop.current())
             except gen.TimeoutError:
@@ -1513,7 +1503,7 @@ class OTAStatusReportingHandler(NodeBaseHandler):
             except:
                 pass
 
-        gen_log.info("+++send ota state to app:"+ str(state))
+        gen_log.info("+++send ota state to app:" + str(state))
 
         if self.request.connection.stream.closed():
             return
@@ -1526,19 +1516,17 @@ class OTAStatusReportingHandler(NodeBaseHandler):
 
 
 class OTAFirmwareSendingHandler(BaseHandler):
-
-    def initialize (self, conns, state_waiters, state_happened):
+    def initialize(self, conns, state_waiters, state_happened):
         self.conns = conns
         self.state_waiters = state_waiters
         self.state_happened = state_happened
 
-    def get_node (self):
+    def get_node(self):
         node = None
-        sn = self.get_argument("sn","")
+        sn = self.get_argument("sn", "")
         if not sn:
             gen_log.error("ota bin request has no sn provided")
             return
-
 
         sn = sn[:-4]
         try:
@@ -1553,7 +1541,7 @@ class OTAFirmwareSendingHandler(BaseHandler):
         if sn:
             try:
                 cur = self.application.cur
-                cur.execute('select * from nodes where node_sn="%s"'%sn)
+                cur.execute('select * from nodes where node_sn="%s"' % sn)
                 rows = cur.fetchall()
                 if len(rows) > 0:
                     node = rows[0]
@@ -1563,17 +1551,16 @@ class OTAFirmwareSendingHandler(BaseHandler):
             node = None
 
         if not node:
-            self.resp(403,"Please attach the valid node sn")
+            self.resp(403, "Please attach the valid node sn")
         else:
-            gen_log.info("get current node, id: %s, name: %s" % (node['node_id'],node["name"]))
+            gen_log.info("get current node, id: %s, name: %s" % (node['node_id'], node["name"]))
 
         return node
 
-
     @gen.coroutine
     def head(self):
-        app = self.get_argument("app","")
-        if not app or app not in [1,2,"1","2"]:
+        app = self.get_argument("app", "")
+        if not app or app not in [1, 2, "1", "2"]:
             gen_log.error("ota bin request has no app number provided")
             return
 
@@ -1586,11 +1573,11 @@ class OTAFirmwareSendingHandler(BaseHandler):
         node_id = node['node_id']
         self.node_sn = node_sn
 
-        #get the user dir and path of bin
-        bin_path = os.path.join("users_build/",str(user_id) + '_' + str(node_sn), "user%s.bin"%str(app))
+        # get the user dir and path of bin
+        bin_path = os.path.join("users_build/", str(user_id) + '_' + str(node_sn), "user%s.bin" % str(app))
 
-        #put user*.bin out
-        self.set_header("Content-Type","application/octet-stream")
+        # put user*.bin out
+        self.set_header("Content-Type", "application/octet-stream")
         self.set_header("Content-Transfer-Encoding", "binary")
         self.set_header("Content-Length", os.path.getsize(bin_path))
 
@@ -1598,8 +1585,8 @@ class OTAFirmwareSendingHandler(BaseHandler):
 
     @gen.coroutine
     def get(self):
-        app = self.get_argument("app","")
-        if not app or app not in [1,2,"1","2"]:
+        app = self.get_argument("app", "")
+        if not app or app not in [1, 2, "1", "2"]:
             gen_log.error("ota bin request has no app number provided")
             return
 
@@ -1612,15 +1599,15 @@ class OTAFirmwareSendingHandler(BaseHandler):
         node_id = node['node_id']
         self.node_sn = node_sn
 
-        #get the user dir and path of bin
-        bin_path = os.path.join("users_build/",str(user_id) + '_' + str(node_sn), "user%s.bin"%str(app))
+        # get the user dir and path of bin
+        bin_path = os.path.join("users_build/", str(user_id) + '_' + str(node_sn), "user%s.bin" % str(app))
 
-        #put user*.bin out
-        self.set_header("Content-Type","application/octet-stream")
+        # put user*.bin out
+        self.set_header("Content-Type", "application/octet-stream")
         self.set_header("Content-Transfer-Encoding", "binary")
         self.set_header("Content-Length", os.path.getsize(bin_path))
 
-        with open(bin_path,"rb") as file:
+        with open(bin_path, "rb") as file:
             while True:
                 try:
                     chunk_size = 64 * 1024
@@ -1633,15 +1620,14 @@ class OTAFirmwareSendingHandler(BaseHandler):
                         state = ('going', 'Verifying the firmware...')
                         self.send_notification(state)
                         break
-                except Exception,e:
+                except Exception, e:
                     gen_log.error('node %s error when sending binary file: %s' % (node_id, str(e)))
                     state = ('error', 'Error when sending binary file. Please retry.')
                     self.send_notification(state)
                     self.clear()
                     break
 
-
-    def post (self, uri):
+    def post(self, uri):
         self.resp(404, "Please get this url.")
 
     def send_notification(self, state):
@@ -1655,10 +1641,10 @@ class OTAFirmwareSendingHandler(BaseHandler):
         else:
             self.state_happened[self.node_sn] = [state]
 
-class COTFHandler(NodeBaseHandler):
 
+class COTFHandler(NodeBaseHandler):
     @gen.coroutine
-    def get (self, uri):
+    def get(self, uri):
         node = self.get_node()
         if not node:
             return
@@ -1668,7 +1654,7 @@ class COTFHandler(NodeBaseHandler):
         node_sn = node["node_sn"]
 
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
-        user_build_dir = cur_dir + '/users_build/' + str(user_id)  + '_' + node_sn
+        user_build_dir = cur_dir + '/users_build/' + str(user_id) + '_' + node_sn
         if not os.path.exists(user_build_dir):
             self.resp(404, "User's working dir not found")
             return
@@ -1690,11 +1676,10 @@ class COTFHandler(NodeBaseHandler):
             self.resp(200, meta=output_json)
             return
 
-
         self.resp(404, "API endpoint not found")
 
     @gen.coroutine
-    def post (self, uri):
+    def post(self, uri):
         node = self.get_node()
         if not node:
             return
@@ -1704,7 +1689,7 @@ class COTFHandler(NodeBaseHandler):
         node_sn = node["node_sn"]
 
         cur_dir = os.path.split(os.path.realpath(__file__))[0]
-        user_build_dir = cur_dir + '/users_build/' + str(user_id)  + '_' + node_sn
+        user_build_dir = cur_dir + '/users_build/' + str(user_id) + '_' + node_sn
         if not os.path.exists(user_build_dir):
             self.resp(404, "User's working dir not found")
             return
@@ -1716,7 +1701,7 @@ class COTFHandler(NodeBaseHandler):
                 project_src = None
                 try:
                     project_src = json.loads(self.request.body)
-                except Exception,e:
+                except Exception, e:
                     self.resp(400, 'invalid json: ' + str(e))
                     return
 
@@ -1724,7 +1709,7 @@ class COTFHandler(NodeBaseHandler):
                     self.resp(400, 'json is not dict')
                     return
 
-                for k,v in project_src.items():
+                for k, v in project_src.items():
                     if k.find('..') > 0:
                         self.resp(400, 'please dont!!!')
                         return
@@ -1749,6 +1734,5 @@ class COTFHandler(NodeBaseHandler):
                 self.resp(400, "Please post the request in json")
 
             return
-
 
         self.resp(404, "API endpoint not found")

@@ -24,29 +24,30 @@ import time as systime
 from datetime import *
 
 TYPE_MAP = {
-    'SULI_EDT_NONE':'null',
-    'SULI_EDT_BOOL':'bool',
-    'SULI_EDT_UINT8':'uint8_t',
-    'SULI_EDT_INT8':'int8_t',
-    'SULI_EDT_UINT16':'uint16_t',
-    'SULI_EDT_INT':'int16_t',
-    'SULI_EDT_INT16':'int16_t',
-    'SULI_EDT_UINT32':'uint32_t',
-    'SULI_EDT_INT32':'int32_t',
-    'SULI_EDT_FLOAT':'float',
-    'SULI_EDT_STRING':'char *'
+    'SULI_EDT_NONE': 'null',
+    'SULI_EDT_BOOL': 'bool',
+    'SULI_EDT_UINT8': 'uint8_t',
+    'SULI_EDT_INT8': 'int8_t',
+    'SULI_EDT_UINT16': 'uint16_t',
+    'SULI_EDT_INT': 'int16_t',
+    'SULI_EDT_INT16': 'int16_t',
+    'SULI_EDT_UINT32': 'uint32_t',
+    'SULI_EDT_INT32': 'int32_t',
+    'SULI_EDT_FLOAT': 'float',
+    'SULI_EDT_STRING': 'char *'
 }
 
 
-def parse_one_driver_dir (driver_dir):
+def parse_one_driver_dir(driver_dir):
     files = []
     for f in os.listdir(driver_dir):
-        full_path = os.path.join(driver_dir,f)
+        full_path = os.path.join(driver_dir, f)
         if os.path.isfile(full_path) and (full_path.endswith(".h") or full_path.endswith(".cpp")):
             files.append(f)
     return files
 
-def get_class_header_file (files, dir_name):
+
+def get_class_header_file(files, dir_name):
     for f in files:
         if f.endswith(".h") and f.find("class") > -1:
             return f
@@ -58,6 +59,7 @@ def get_class_header_file (files, dir_name):
             return f
 
     return ""
+
 
 def find_comments(comment_type, content):
     comments = re.findall(r'(\/\*\*[\s\S]*?\*\/)[\r\n]+(.*)', content, re.M)
@@ -75,10 +77,11 @@ def find_comments(comment_type, content):
             n = re.findall(r'\s+DEFINE_EVENT\((.*)\s*,\s*(.*)\)', comment[1])
             if n:
                 result.append((comment[0], n[0][0]))
-    #print result
+    # print result
     return result
 
-def parse_class_header_file (file):
+
+def parse_class_header_file(file):
     patterns = {}
     doc = {}
     doc_methods = {}
@@ -89,25 +92,24 @@ def parse_class_header_file (file):
     json_dump = ""
     try:
         json_dump = json.dumps(content);
-    except Exception,e:
+    except Exception, e:
         print e
 
     if not json_dump:
         try:
-            content = unicode(content,"ISO-8859-1")
+            content = unicode(content, "ISO-8859-1")
             json_dump = json.dumps(content)
-        except Exception,e:
+        except Exception, e:
             print e
     if not json_dump:
         try:
-            content = unicode(content,"GB2312")
+            content = unicode(content, "GB2312")
             json_dump = json.dumps(content)
-        except Exception,e:
+        except Exception, e:
             print e
 
     if not json_dump:
         return ("Encoding of source file is not one of: utf8,iso-8859-1,gb2312", {}, {})
-
 
     ##grove name
     grove_name = re.findall(r'^//GROVE_NAME\s+"(.+)"', content, re.M)
@@ -115,7 +117,7 @@ def parse_class_header_file (file):
     if grove_name:
         patterns["GroveName"] = grove_name[0].rstrip('\r')
     else:
-        return ("can not find GROVE_NAME in %s"%file, {},{})
+        return ("can not find GROVE_NAME in %s" % file, {}, {})
 
     ##SKU
     sku = re.findall(r'^//SKU\s+([a-zA-z0-9\-_]+)', content, re.M)
@@ -123,8 +125,7 @@ def parse_class_header_file (file):
     if sku:
         patterns["SKU"] = sku[0].rstrip('\r')
     else:
-        return ("can not find SKU in %s"%file, {},{})
-
+        return ("can not find SKU in %s" % file, {}, {})
 
     ##interface type
     if_type = re.findall(r'^//IF_TYPE\s+([a-zA-z0-9]+)', content, re.M)
@@ -132,14 +133,14 @@ def parse_class_header_file (file):
     if if_type:
         patterns["InterfaceType"] = if_type[0]
     else:
-        return ("can not find IF_TYPE in %s"%file,{}, {})
+        return ("can not find IF_TYPE in %s" % file, {}, {})
     ##image url
     image_url = re.findall(r'^//IMAGE_URL\s+(.+)', content, re.M)
     print image_url
     if image_url:
         patterns["ImageURL"] = image_url[0].rstrip('\r')
     else:
-        return ("can not find IMAGE_URL in %s"%file,{}, {})
+        return ("can not find IMAGE_URL in %s" % file, {}, {})
 
     ##DESCRIPTION
     description = re.findall(r'^//DESCRIPTION\s+"(.+)"', content, re.M)
@@ -147,7 +148,7 @@ def parse_class_header_file (file):
     if description:
         patterns["Description"] = description[0].rstrip('\r')
     else:
-        return ("can not find DESCRIPTION in %s"%file, {},{})
+        return ("can not find DESCRIPTION in %s" % file, {}, {})
 
     ##HACK_GUIDE_URL
     hack_guide_url = re.findall(r'^//HACK_GUIDE_URL\s+(.+)', content, re.M)
@@ -165,7 +166,7 @@ def parse_class_header_file (file):
     if wiki_url:
         patterns["WikiURL"] = wiki_url[0].rstrip('\r')
     else:
-        return ("can not find WIKI_URL in %s"%file,{}, {})
+        return ("can not find WIKI_URL in %s" % file, {}, {})
 
     ##ADDED_AT
     added_at = re.findall(r'^//ADDED_AT\s+"(.+)"', content, re.M)
@@ -178,17 +179,17 @@ def parse_class_header_file (file):
             try:
                 _time = systime.strptime(date_str, f)
                 break
-            except Exception,e:
+            except Exception, e:
                 print e
                 _time = None
         if not _time:
-            return ("%s is not the valid date format, should be YYYY-mm-dd"%date_str, {},{})
+            return ("%s is not the valid date format, should be YYYY-mm-dd" % date_str, {}, {})
         else:
             timestamp = int(systime.mktime(_time))
         patterns["AddedAt"] = timestamp
         print timestamp
     else:
-        return ("can not find ADDED_AT in %s"%file, {},{})
+        return ("can not find ADDED_AT in %s" % file, {}, {})
 
     ##AUTHOR
     author = re.findall(r'^//AUTHOR\s+"(.+)"', content, re.M)
@@ -196,7 +197,7 @@ def parse_class_header_file (file):
     if author:
         patterns["Author"] = author[0].rstrip('\r')
     else:
-        return ("can not find AUTHOR in %s"%file, {},{})
+        return ("can not find AUTHOR in %s" % file, {}, {})
 
     ##class name
     class_name = re.findall(r'^class\s+([a-zA-z0-9_]+)', content, re.M)
@@ -204,14 +205,14 @@ def parse_class_header_file (file):
     if class_name:
         patterns["ClassName"] = class_name[0]
     else:
-        return ("can not find class name in %s"%file,{}, {})
+        return ("can not find class name in %s" % file, {}, {})
     ##construct function arg list
-    arg_list = re.findall(r'%s\((.*)\);'%class_name[0], content, re.M)
+    arg_list = re.findall(r'%s\((.*)\);' % class_name[0], content, re.M)
     print arg_list
     if arg_list:
         patterns["ConstructArgList"] = [x.strip(" ") for x in arg_list[0].split(',')]
     else:
-        return ("can not find construct arg list in %s"%file,{}, {})
+        return ("can not find construct arg list in %s" % file, {}, {})
 
     ## read functions
     read_functions = re.findall(r'^\s+bool\s+(read_[a-zA-z0-9_]+)\((.*)\).*$', content, re.M)
@@ -222,7 +223,7 @@ def parse_class_header_file (file):
         args = [x.strip() for x in args]
         if 'void' in args:
             args.remove('void')
-        #prepare input args
+        # prepare input args
         args_in = []
         args_rest = []
         for a in args:
@@ -230,28 +231,28 @@ def parse_class_header_file (file):
             if a.find('*') < 0:
                 pair = a.split(' ')
                 if len(pair) != 2:
-                    return ("bad format in argument %s of read function %s" % (a, func[0]),{}, {})
+                    return ("bad format in argument %s of read function %s" % (a, func[0]), {}, {})
                 args_in.append([pair[0], pair[1]])
             elif a.find('char *') >= 0 and a.find('char **') < 0:
-                if args.index(a) != len(args)-1:
-                    return ("para %s must be the last one, in read function %s" % (a, func[0]),{}, {})
+                if args.index(a) != len(args) - 1:
+                    return ("para %s must be the last one, in read function %s" % (a, func[0]), {}, {})
                 name = a.replace('char *', '')
                 args_in.append(['char *', name])
             else:
                 args_rest.append(a)
-        #prepare returns
+        # prepare returns
         returns_out = []
         for a in args_rest:
             if not a: continue;
-            pair = a.replace('*', '', 1).split(' ')  #reserve * for char **
+            pair = a.replace('*', '', 1).split(' ')  # reserve * for char **
             if len(pair) != 2:
-                return ("bad format in argument %s of read function %s" % (a, func[0]),{}, {})
+                return ("bad format in argument %s of read function %s" % (a, func[0]), {}, {})
             if pair[1].find('*') >= 0:
-                returns_out.append([pair[0]+' *', pair[1].replace('*','')])
+                returns_out.append([pair[0] + ' *', pair[1].replace('*', '')])
             else:
                 returns_out.append([pair[0], pair[1]])
 
-        reads[func[0]] = {'Arguments':args_in, 'Returns':returns_out, 'Raw':args}
+        reads[func[0]] = {'Arguments': args_in, 'Returns': returns_out, 'Raw': args}
     patterns["Reads"] = reads
 
     read_functions_with_doc = find_comments('read', content)
@@ -276,25 +277,25 @@ def parse_class_header_file (file):
         args = [x.strip() for x in args]
         if 'void' in args:
             args.remove('void')
-        #prepare args in
+        # prepare args in
         args_in = []
         for a in args:
             if not a: continue;
             if a.find('char *') >= 0:
                 if a.find('**') >= 0:
-                    return ("%s not accepted in function %s" % (a, func[0]),{}, {})
+                    return ("%s not accepted in function %s" % (a, func[0]), {}, {})
                 pair = a.replace('*', '').split(' ')
                 if len(pair) != 2:
-                    return ("bad format in argument %s of function %s" % (a, func[0]),{}, {})
-                if args.index(a) != len(args)-1:
-                    return ("para %s must be the last one, in function %s" % (a, func[0]),{}, {})
+                    return ("bad format in argument %s of function %s" % (a, func[0]), {}, {})
+                if args.index(a) != len(args) - 1:
+                    return ("para %s must be the last one, in function %s" % (a, func[0]), {}, {})
                 args_in.append(['char *', pair[1]])
             elif a.find('*') >= 0:
-                return ("%s not accepted in function write_%s" % (a, func[0]),{}, {})
+                return ("%s not accepted in function write_%s" % (a, func[0]), {}, {})
             else:
                 pair = a.split(' ')
                 if len(pair) != 2:
-                    return ("bad format in argument %s of function %s." % (a, func[0]),{}, {})
+                    return ("bad format in argument %s of function %s." % (a, func[0]), {}, {})
                 args_in.append([pair[0], pair[1]])
 
         writes[func[0]] = {'Arguments': args_in}
@@ -365,8 +366,7 @@ def parse_class_header_file (file):
     else:
         patterns["HasPowerOffFunc"] = False
 
-    return ("OK",patterns, doc)
-
+    return ("OK", patterns, doc)
 
 
 ## main ##
@@ -388,9 +388,9 @@ if __name__ == '__main__':
         if os.path.isdir(full_dir) and f != '.git':
             print full_dir
             files = parse_one_driver_dir(full_dir)
-            class_file = get_class_header_file(files,f)
+            class_file = get_class_header_file(files, f)
             if class_file:
-                result, patterns, doc = parse_class_header_file(os.path.join(full_dir,class_file))
+                result, patterns, doc = parse_class_header_file(os.path.join(full_dir, class_file))
                 if patterns:
                     grove_info['ID'] = grove_id
                     grove_info['IncludePath'] = full_dir.replace(cur_dir, ".")
@@ -407,7 +407,7 @@ if __name__ == '__main__':
                     grove_docs.append(grove_doc)
                     grove_id = grove_id + 1
                 else:
-                    failed_msg = "ERR: parse class file: %s"%result
+                    failed_msg = "ERR: parse class file: %s" % result
                     failed = True
                     break
             else:
@@ -415,16 +415,17 @@ if __name__ == '__main__':
                 failed = True
                 break
 
-    #print grove_database
+    # print grove_database
 
     print "========="
     print grove_docs
     print ""
 
     if not failed:
-        open("%s/drivers.json"%cur_dir,"w").write(json.dumps(grove_database))
-        open("%s/driver_docs.json"%cur_dir,"w").write(json.dumps(grove_docs))
-        open("%s/scan_status.json"%cur_dir,"w").write('{"result":"OK", "msg":"scanned %d grove drivers at %s"}' % (len(grove_database), str(datetime.now())))
+        open("%s/drivers.json" % cur_dir, "w").write(json.dumps(grove_database))
+        open("%s/driver_docs.json" % cur_dir, "w").write(json.dumps(grove_docs))
+        open("%s/scan_status.json" % cur_dir, "w").write(
+            '{"result":"OK", "msg":"scanned %d grove drivers at %s"}' % (len(grove_database), str(datetime.now())))
     else:
         print failed_msg
         open("%s/scan_status.json" % cur_dir,
@@ -438,19 +439,18 @@ if __name__ == '__main__':
 
     user_build_dir = cur_dir + '/users_build/local_user_00000000000000000000'
 
-    #os.putenv("SPI_SPEED", "40")
-    #os.putenv("SPI_MODE", "QIO")
-    #os.putenv("SPI_SIZE_MAP", "6")
+    # os.putenv("SPI_SPEED", "40")
+    # os.putenv("SPI_MODE", "QIO")
+    # os.putenv("SPI_SIZE_MAP", "6")
 
     os.system('cd %s;cp -f ../../Makefile.template ./Makefile ' % user_build_dir)
-
 
     cmd = 'cd %s;make clean_libs;make libs|tee build.log 2>&1' % (user_build_dir)
     print '---- start to build the prebuilt libs ---'
     print cmd
     os.system(cmd)
 
-    content = open(user_build_dir+"/build.log", 'r').readlines()
+    content = open(user_build_dir + "/build.log", 'r').readlines()
     for line in content:
         if line.find("error:") > -1 or line.find("make:") > -1 or line.find("undefined reference to") > -1:
             print line

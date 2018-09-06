@@ -25,25 +25,25 @@
 
 
 ########################################
-#Configurations
+# Configurations
 #
-#Set the OTA server which is used by the Wio Links
-#This script will connect to OTA server to fetch node informations.
-#Options: chinese, global_old, global_new, customize
-OTA_SERVER='global_new'
+# Set the OTA server which is used by the Wio Links
+# This script will connect to OTA server to fetch node informations.
+# Options: chinese, global_old, global_new, customize
+OTA_SERVER = 'global_new'
 
-#Set the tokens when seeed server(chinese, global new and old),
-#Get token from https://wio.seeed.io/login
-#Note: all seeed server have same user token
+# Set the tokens when seeed server(chinese, global new and old),
+# Get token from https://wio.seeed.io/login
+# Note: all seeed server have same user token
 TOKENS = ["your token"]
 
-#Set the address of the OTA server if OTA_SERVER is set to 'customize'
-#Only applies when OTA_SERVER='customize'
-CUSTOM_OTA_SERVER_ADDR='http://192.168.x.x:8080'
+# Set the address of the OTA server if OTA_SERVER is set to 'customize'
+# Only applies when OTA_SERVER='customize'
+CUSTOM_OTA_SERVER_ADDR = 'http://192.168.x.x:8080'
 
-#Set the accounts which will be used when logging in the OTA server
-#Set each account with a key-value pair in which the pattern is email:password
-ACCOUNTS={'example@mail.com':'password'}
+# Set the accounts which will be used when logging in the OTA server
+# Set each account with a key-value pair in which the pattern is email:password
+ACCOUNTS = {'example@mail.com': 'password'}
 
 ########################################
 
@@ -73,23 +73,21 @@ from tornado.queues import Queue
 from tornado.locks import Semaphore, Condition
 from tornado_cors import CorsMixin
 
-
-
 define("mode", default="online", help="Running mode, online: will fetch node info from OTA server at start up.")
 
 PENDING_REQ_CNT = 10
-NODES_DATABASE=[]
+NODES_DATABASE = []
 
 BS = AES.block_size
-pad = lambda s: s if (len(s) % BS == 0) else (s + (BS - len(s) % BS) * chr(0) )
-unpad = lambda s : s.rstrip(chr(0))
+pad = lambda s: s if (len(s) % BS == 0) else (s + (BS - len(s) % BS) * chr(0))
+unpad = lambda s: s.rstrip(chr(0))
+
 
 class DeviceConnection(object):
-
     state_waiters = {}
     state_happened = {}
 
-    def __init__ (self, device_server, stream, address):
+    def __init__(self, device_server, stream, address):
         self.fw_version = 0.0
         self.recv_msg_cond = Condition()
         self.recv_msg = {}
@@ -109,8 +107,8 @@ class DeviceConnection(object):
         self.cipher_down = None
         self.cipher_up = None
 
-        #self.state_waiters = []
-        #self.state_happened = []
+        # self.state_waiters = []
+        # self.state_happened = []
 
         self.event_waiters = []
         self.event_happened = []
@@ -121,52 +119,54 @@ class DeviceConnection(object):
         self.online_status = True
 
     @gen.coroutine
-    def secure_write (self, data):
+    def secure_write(self, data):
         if self.cipher_down:
             cipher_text = self.cipher_down.encrypt(pad(data))
             yield self.stream.write(cipher_text)
 
     @gen.coroutine
-    def wait_hello (self):
+    def wait_hello(self):
         try:
-            self._wait_hello_future = self.stream.read_bytes(64) #read 64bytes: 32bytes SN + 32bytes signature signed with private key
+            self._wait_hello_future = self.stream.read_bytes(
+                64)  # read 64bytes: 32bytes SN + 32bytes signature signed with private key
             str1 = yield gen.with_timeout(timedelta(seconds=10), self._wait_hello_future,
-                                         io_loop=self.stream.io_loop)
-            self.idle_time = 0  #reset the idle time counter
+                                          io_loop=self.stream.io_loop)
+            self.idle_time = 0  # reset the idle time counter
 
             if len(str1) != 64:
                 self.stream.write("sorry\r\n")
                 yield gen.sleep(0.1)
                 self.kill_myself()
                 gen_log.debug("receive length != 64")
-                raise gen.Return(100) # length not match 64
+                raise gen.Return(100)  # length not match 64
 
             if re.match(r'@\d\.\d', str1[0:4]):
-                #new version firmware
-                self._wait_hello_future = self.stream.read_bytes(4) #read another 4bytes
-                str2 = yield gen.with_timeout(timedelta(seconds=10), self._wait_hello_future, io_loop=self.stream.io_loop)
+                # new version firmware
+                self._wait_hello_future = self.stream.read_bytes(4)  # read another 4bytes
+                str2 = yield gen.with_timeout(timedelta(seconds=10), self._wait_hello_future,
+                                              io_loop=self.stream.io_loop)
 
-                self.idle_time = 0  #reset the idle time counter
+                self.idle_time = 0  # reset the idle time counter
 
                 if len(str2) != 4:
                     self.stream.write("sorry\r\n")
                     yield gen.sleep(0.1)
                     self.kill_myself()
                     gen_log.debug("receive length != 68")
-                    raise gen.Return(100) # length not match 64
+                    raise gen.Return(100)  # length not match 64
 
                 str1 += str2
                 self.fw_version = float(str1[1:4])
                 sn = str1[4:36]
                 sig = str1[36:68]
             else:
-                #for version < 1.1
+                # for version < 1.1
                 sn = str1[0:32]
                 sig = str1[32:64]
 
             gen_log.info("accepted sn: %s @fw_version %.1f" % (sn, self.fw_version))
 
-            #query the sn from database
+            # query the sn from database
             node = None
             for n in NODES_DATABASE:
                 if n['node_sn'] == sn:
@@ -185,35 +185,35 @@ class DeviceConnection(object):
                 yield gen.sleep(0.1)
                 self.kill_myself()
                 gen_log.info("node sn not found")
-                raise gen.Return(101) #node not found
+                raise gen.Return(101)  # node not found
 
             key = node['node_key']
             key = key.encode("ascii")
 
             sig0 = hmac.new(key, msg=sn, digestmod=hashlib.sha256).digest()
-            gen_log.debug("sig:     "+ binascii.hexlify(sig))
-            gen_log.debug("sig calc:"+ binascii.hexlify(sig0))
+            gen_log.debug("sig:     " + binascii.hexlify(sig))
+            gen_log.debug("sig calc:" + binascii.hexlify(sig0))
 
             if sig0 == sig:
-                #send IV + AES Key
+                # send IV + AES Key
                 self.sn = sn
                 self.private_key = key
                 self.node_id = self.sn
                 gen_log.info("valid hello packet from node %s" % self.node_id)
-                #remove the junk connection of the same sn
+                # remove the junk connection of the same sn
                 self.stream.io_loop.add_callback(self.device_server.remove_junk_connection, self)
-                #init aes
+                # init aes
                 self.iv = Random.new().read(AES.block_size)
                 self.cipher_down = AES.new(key, AES.MODE_CFB, self.iv, segment_size=128)
 
                 if self.fw_version > 1.0:
                     self.cipher_up = AES.new(key, AES.MODE_CFB, self.iv, segment_size=128)
                 else:
-                    #for old version
+                    # for old version
                     self.cipher_up = self.cipher_down
 
                 cipher_text = self.iv + self.cipher_down.encrypt(pad("hello"))
-                gen_log.debug("cipher text: "+ cipher_text.encode('hex'))
+                gen_log.debug("cipher text: " + cipher_text.encode('hex'))
                 self.stream.write(cipher_text)
                 raise gen.Return(0)
             else:
@@ -221,7 +221,7 @@ class DeviceConnection(object):
                 yield gen.sleep(0.1)
                 self.kill_myself()
                 gen_log.error("signature not match: %s %s" % (sig, sig0))
-                raise gen.Return(102) #sig not match
+                raise gen.Return(102)  # sig not match
         except gen.TimeoutError:
             self.kill_myself()
             raise gen.Return(1)
@@ -229,10 +229,10 @@ class DeviceConnection(object):
             self.kill_myself()
             raise gen.Return(2)
 
-        #self.stream.io_loop.add_future(self._serving_future, lambda future: future.result())
+            # self.stream.io_loop.add_future(self._serving_future, lambda future: future.result())
 
     @gen.coroutine
-    def _loop_reading_input (self):
+    def _loop_reading_input(self):
         line = ""
         piece = ""
         while not self.killed:
@@ -243,7 +243,7 @@ class DeviceConnection(object):
                 line += msg
 
                 while line.find('\r\n') > -1:
-                    #reset the timeout
+                    # reset the timeout
                     if self.timeout_handler_onlinecheck:
                         ioloop.IOLoop.current().remove_timeout(self.timeout_handler_onlinecheck)
                     self.timeout_handler_onlinecheck = ioloop.IOLoop.current().call_later(60, self._online_check)
@@ -269,7 +269,7 @@ class DeviceConnection(object):
                         state = None
                         event = None
                         if json_obj['msg_type'] == 'online_status':
-                            if json_obj['msg'] in ['1',1,True]:
+                            if json_obj['msg'] in ['1', 1, True]:
                                 self.online_status = True
                             else:
                                 self.online_status = False
@@ -298,9 +298,10 @@ class DeviceConnection(object):
                         gen_log.debug(state)
                         gen_log.debug(event)
                         if state:
-                            #print self.state_waiters
-                            #print self.state_happened
-                            if self.state_waiters and self.sn in self.state_waiters and len(self.state_waiters[self.sn]) > 0:
+                            # print self.state_waiters
+                            # print self.state_happened
+                            if self.state_waiters and self.sn in self.state_waiters and len(
+                                    self.state_waiters[self.sn]) > 0:
                                 f = self.state_waiters[self.sn].pop(0)
                                 f.set_result(state)
                                 if len(self.state_waiters[self.sn]) == 0:
@@ -320,8 +321,8 @@ class DeviceConnection(object):
                             self.recv_msg = json_obj
                             self.recv_msg_cond.notify()
                             yield gen.moment
-                    except Exception,e:
-                        gen_log.warn("Node %s: %s" % (self.node_id,str(e)))
+                    except Exception, e:
+                        gen_log.warn("Node %s: %s" % (self.node_id, str(e)))
 
             except iostream.StreamClosedError:
                 gen_log.error("StreamClosedError when reading from node %s" % self.node_id)
@@ -329,15 +330,15 @@ class DeviceConnection(object):
                 return
             except ValueError:
                 gen_log.warn("Node %s: %s can not be decoded into json" % (self.node_id, piece))
-            except Exception,e:
-                gen_log.error("Node %s: %s" % (self.node_id,str(e)))
+            except Exception, e:
+                gen_log.error("Node %s: %s" % (self.node_id, str(e)))
                 self.kill_myself()
                 return
 
             yield gen.moment
 
     @gen.coroutine
-    def _online_check (self):
+    def _online_check(self):
         gen_log.info("heartbeat sent to node %s on %s channel" % (self.node_id, self.device_server.role))
         try:
             yield self.secure_write("##PING##")
@@ -354,12 +355,11 @@ class DeviceConnection(object):
         gen_log.error("no answer from node %s, kill" % self.node_id)
         self.kill_myself()
 
-
     @gen.coroutine
-    def start_serving (self):
+    def start_serving(self):
         ret = yield self.wait_hello()
         if ret == 0:
-            #gen_log.info("waited hello")
+            # gen_log.info("waited hello")
             pass
         elif ret == 1:
             gen_log.info("timeout waiting hello, kill this connection")
@@ -381,8 +381,7 @@ class DeviceConnection(object):
             ioloop.IOLoop.current().remove_timeout(self.timeout_handler_offline)
         self.timeout_handler_offline = ioloop.IOLoop.current().call_later(70, self._callback_when_offline)
 
-
-    def kill_myself (self):
+    def kill_myself(self):
         if self.killed:
             return
         self.sn = ""
@@ -400,9 +399,8 @@ class DeviceConnection(object):
         if self.timeout_handler_offline:
             ioloop.IOLoop.current().remove_timeout(self.timeout_handler_offline)
 
-
     @gen.coroutine
-    def submit_cmd (self, cmd):
+    def submit_cmd(self, cmd):
         yield self.send_msg_sem.acquire()
         try:
             yield self.secure_write(cmd)
@@ -410,13 +408,13 @@ class DeviceConnection(object):
             self.send_msg_sem.release()
 
     @gen.coroutine
-    def submit_and_wait_resp (self, cmd, target_resp, timeout_sec=5):
+    def submit_and_wait_resp(self, cmd, target_resp, timeout_sec=5):
 
         self.pending_request_cnt += 1
         if self.pending_request_cnt > PENDING_REQ_CNT:
             self.pending_request_cnt = PENDING_REQ_CNT
             gen_log.warn('Node %s: request too fast' % self.node_id)
-            raise gen.Return((False, {"status":400, "msg":"request too fast"}))
+            raise gen.Return((False, {"status": 400, "msg": "request too fast"}))
 
         yield self.send_msg_sem.acquire()
         try:
@@ -424,7 +422,8 @@ class DeviceConnection(object):
             ok = yield self.recv_msg_cond.wait(timeout=timedelta(seconds=timeout_sec))
             if not ok:
                 gen_log.error("timeout when waiting response from Node %s" % self.node_id)
-                raise gen.Return((False, {"status":408, "msg":"timeout when waiting response from Node %s" % self.node_id}))
+                raise gen.Return(
+                    (False, {"status": 408, "msg": "timeout when waiting response from Node %s" % self.node_id}))
 
             msg = self.recv_msg
             if msg['msg_type'] == target_resp:
@@ -433,36 +432,33 @@ class DeviceConnection(object):
                 del msg['msg_type']
                 raise gen.Return((True, msg))
             else:
-                raise gen.Return((False, {"status":500, "msg":"unexpected error 1"}))
+                raise gen.Return((False, {"status": 500, "msg": "unexpected error 1"}))
         except gen.Return:
             raise
-        except Exception,e:
+        except Exception, e:
             gen_log.error(e)
-            raise gen.Return((False, {"status":500, "msg":"Node %s: %s" % (self.node_id, str(e))}))
+            raise gen.Return((False, {"status": 500, "msg": "Node %s: %s" % (self.node_id, str(e))}))
         finally:
-            self.send_msg_sem.release()  #inc the semaphore value to 1
+            self.send_msg_sem.release()  # inc the semaphore value to 1
             self.pending_request_cnt -= 1
 
 
-
 class DeviceServer(TCPServer):
-
     accepted_xchange_conns = []
 
-    def __init__ (self):
+    def __init__(self):
         self.role = 'xchange'
         TCPServer.__init__(self)
 
-
     def handle_stream(self, stream, address):
-        conn = DeviceConnection(self, stream,address)
+        conn = DeviceConnection(self, stream, address)
 
         self.accepted_xchange_conns.append(conn)
-        gen_log.info("%s device server accepted conns: %d"% (self.role, len(self.accepted_xchange_conns)))
+        gen_log.info("%s device server accepted conns: %d" % (self.role, len(self.accepted_xchange_conns)))
 
         conn.start_serving()
 
-    def remove_connection (self, conn):
+    def remove_connection(self, conn):
         gen_log.info("%s device server will remove connection: %s" % (self.role, str(conn)))
         try:
             self.accepted_xchange_conns.remove(conn)
@@ -470,15 +466,15 @@ class DeviceServer(TCPServer):
         except:
             pass
 
-    def remove_junk_connection (self, conn):
+    def remove_junk_connection(self, conn):
         try:
             connections = self.accepted_xchange_conns
             for c in connections:
-                if c.sn == conn.sn and c != conn :
+                if c.sn == conn.sn and c != conn:
                     c.killed = True
                     c.kill_by_server()
-                    #clear waiting futures
-                    gen_log.info("%s device server removed one junk connection of same sn: %s"% (self.role, c.sn))
+                    # clear waiting futures
+                    gen_log.info("%s device server removed one junk connection of same sn: %s" % (self.role, c.sn))
                     connections.remove(c)
                     del c
                     break
@@ -486,31 +482,28 @@ class DeviceServer(TCPServer):
             pass
 
 
-
-
 class NodeBaseHandler(CorsMixin, web.RequestHandler):
     CORS_ORIGIN = '*'
     CORS_HEADERS = 'Content-Type'
 
-    def initialize (self, conns, state_waiters, state_happened):
+    def initialize(self, conns, state_waiters, state_happened):
         self.conns = conns
         self.state_waiters = state_waiters
         self.state_happened = state_happened
 
-
     def get_current_user(self):
         return None
 
-    def get_node (self):
+    def get_node(self):
         node = None
-        token = self.get_argument("access_token","")
+        token = self.get_argument("access_token", "")
         if not token:
             try:
                 token_str = self.request.headers.get("Authorization")
-                token = token_str.replace("token ","")
+                token = token_str.replace("token ", "")
             except:
                 token = None
-        gen_log.debug("node token:"+ str(token))
+        gen_log.debug("node token:" + str(token))
         if token and len(token) == 32:
             try:
                 for n in NODES_DATABASE:
@@ -525,9 +518,9 @@ class NodeBaseHandler(CorsMixin, web.RequestHandler):
             node = None
 
         if not node:
-            self.resp(403,"Node is offline or invalid node token (not the user token).")
+            self.resp(403, "Node is offline or invalid node token (not the user token).")
         else:
-            gen_log.info("get current node, sn: %s, name: %s" % (node['node_sn'],node["name"]))
+            gen_log.info("get current node, sn: %s, name: %s" % (node['node_sn'], node["name"]))
 
         return node
 
@@ -539,7 +532,8 @@ class NodeBaseHandler(CorsMixin, web.RequestHandler):
     408 Timed Out - The server can not communicate with device in a specified time out period.
     500 Server errors - It's usually caused by the unexpected errors of our side.
     '''
-    def resp (self, status_code, meta=None):
+
+    def resp(self, status_code, meta=None):
         if status_code >= 300:
             self.failure_reason = str(meta)
             raise web.HTTPError(status_code)
@@ -547,9 +541,9 @@ class NodeBaseHandler(CorsMixin, web.RequestHandler):
             if isinstance(meta, dict):
                 self.write(meta)
             elif isinstance(meta, list):
-                self.write({"data":meta})
+                self.write({"data": meta})
             elif not meta:
-                self.write({'result':'ok'})
+                self.write({'result': 'ok'})
             else:
                 self.write(meta)
 
@@ -565,31 +559,27 @@ class NodeBaseHandler(CorsMixin, web.RequestHandler):
             self.finish({"error": self.failure_reason})
 
 
-
 class IndexHandler(NodeBaseHandler):
     def get(self):
-        self.resp(400,msg = "Please specify the url as this format: /v1/node/grove_name/property")
+        self.resp(400, msg="Please specify the url as this format: /v1/node/grove_name/property")
 
 
 class NodeReadWriteHandler(NodeBaseHandler):
-
     @gen.coroutine
     def pre_request(self, req_type, uri):
         return True
 
     @gen.coroutine
     def post_request(self, req_type, uri, resp):
-        #append node name to the response of .well-known
+        # append node name to the response of .well-known
         if req_type == 'get' and uri.find('.well-known') >= 0 and 'msg' in resp and type(resp['msg']) == dict:
             resp['msg']['name'] = self.node['name']
-
 
     @gen.coroutine
     def get(self, uri):
 
         uri = uri.split("?")[0]
-        gen_log.debug("get: "+ str(uri))
-
+        gen_log.debug("get: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -602,28 +592,28 @@ class NodeReadWriteHandler(NodeBaseHandler):
         for conn in self.conns:
             if conn.sn == node['node_sn'] and not conn.killed:
                 try:
-                    cmd = "GET /%s\r\n"%(uri)
+                    cmd = "GET /%s\r\n" % (uri)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_get")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_get")
                     if ok:
                         self.post_request('get', uri, resp)
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
         self.resp(404, "Node is offline")
 
     @gen.coroutine
-    def post (self, uri):
+    def post(self, uri):
 
         uri = uri.split("?")[0].rstrip("/")
-        gen_log.info("post to: "+ str(uri))
+        gen_log.info("post to: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -640,19 +630,19 @@ class NodeReadWriteHandler(NodeBaseHandler):
         for conn in self.conns:
             if conn.sn == node['node_sn'] and not conn.killed:
                 try:
-                    cmd = "POST /%s\r\n"%(uri)
+                    cmd = "POST /%s\r\n" % (uri)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_post")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_post")
                     if ok:
                         self.post_request('post', uri, resp)
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
 
@@ -660,12 +650,11 @@ class NodeReadWriteHandler(NodeBaseHandler):
 
 
 class NodeFunctionHandler(NodeReadWriteHandler):
-
     @gen.coroutine
-    def post (self, uri):
+    def post(self, uri):
 
         uri = uri.split("?")[0].rstrip("/")
-        gen_log.info("post to: "+ str(uri))
+        gen_log.info("post to: " + str(uri))
 
         node = self.get_node()
         if not node:
@@ -697,24 +686,24 @@ class NodeFunctionHandler(NodeReadWriteHandler):
         for conn in self.conns:
             if conn.sn == self.node['node_sn'] and not conn.killed:
                 try:
-                    cmd = "POST /%s/%s\r\n"%(uri.strip('/'), arg)
+                    cmd = "POST /%s/%s\r\n" % (uri.strip('/'), arg)
                     cmd = cmd.encode("ascii")
-                    ok, resp = yield conn.submit_and_wait_resp (cmd, "resp_post")
+                    ok, resp = yield conn.submit_and_wait_resp(cmd, "resp_post")
                     if 'status' in resp and resp['status'] != 200:
                         msg = resp['msg'] or 'Unknown reason'
                         self.resp(resp['status'], msg)
                     else:
-                        self.resp(200,meta=resp['msg'])
+                        self.resp(200, meta=resp['msg'])
                 except web.HTTPError:
                     raise
-                except Exception,e:
+                except Exception, e:
                     gen_log.error(e)
                 return
         self.resp(404, "Node is offline")
 
 
 class NodeEventHandler(websocket.WebSocketHandler):
-    def initialize (self, conns):
+    def initialize(self, conns):
         self.conns = conns
         self.cur_conn = None
         self.node_key = None
@@ -750,7 +739,7 @@ class NodeEventHandler(websocket.WebSocketHandler):
     def on_message(self, message):
         self.node_key = message
         if len(message) != 32:
-            self.write_message({"error":"invalid node sn "})
+            self.write_message({"error": "invalid node sn "})
             self.connected = False
             self.close()
 
@@ -760,7 +749,7 @@ class NodeEventHandler(websocket.WebSocketHandler):
             self.node_offline()
             return
 
-        #clear the events buffered before any websocket client connected
+        # clear the events buffered before any websocket client connected
         self.cur_conn.event_happened = []
 
         while self.connected:
@@ -790,29 +779,30 @@ class NodeEventHandler(websocket.WebSocketHandler):
 
     def node_offline(self):
         try:
-            self.write_message({"error":"node is offline"})
+            self.write_message({"error": "node is offline"})
         except:
             pass
         self.connected = False
         self.close()
 
 
-
 class myApplication(web.Application):
-
     def __init__(self):
         handlers = [
-        (r"/v1[/]?", IndexHandler, dict(conns=None)),
-        (r"/v1/node/(?!event|config|resources|setting|function)(.+)", NodeReadWriteHandler, dict(conns=DeviceServer.accepted_xchange_conns, state_waiters=DeviceConnection.state_waiters, state_happened=DeviceConnection.state_happened)),
-        (r"/v1/node/(?=function)(.+)", NodeFunctionHandler, dict(conns=DeviceServer.accepted_xchange_conns, state_waiters=DeviceConnection.state_waiters, state_happened=DeviceConnection.state_happened)),
-        (r"/v1/node/event[/]?", NodeEventHandler,dict(conns=DeviceServer.accepted_xchange_conns)),
+            (r"/v1[/]?", IndexHandler, dict(conns=None)),
+            (r"/v1/node/(?!event|config|resources|setting|function)(.+)", NodeReadWriteHandler,
+             dict(conns=DeviceServer.accepted_xchange_conns, state_waiters=DeviceConnection.state_waiters,
+                  state_happened=DeviceConnection.state_happened)),
+            (r"/v1/node/(?=function)(.+)", NodeFunctionHandler,
+             dict(conns=DeviceServer.accepted_xchange_conns, state_waiters=DeviceConnection.state_waiters,
+                  state_happened=DeviceConnection.state_happened)),
+            (r"/v1/node/event[/]?", NodeEventHandler, dict(conns=DeviceServer.accepted_xchange_conns)),
         ]
 
         web.Application.__init__(self, handlers, debug=False)
 
 
 def fetch_node_info():
-
     global NODES_DATABASE
 
     ota_server_addr = get_ota_server_addr()
@@ -822,16 +812,16 @@ def fetch_node_info():
         return False
 
     gen_log.info("Fetching the list of nodes...")
-    
+
     for token in tokens:
         try:
-            r = requests.get(ota_server_addr.rstrip('/')+'/v1/nodes/list?access_token='+token, verify=False)
+            r = requests.get(ota_server_addr.rstrip('/') + '/v1/nodes/list?access_token=' + token, verify=False)
             if r.status_code != requests.codes.ok:
                 r.raise_for_status()
             else:
                 list_result_obj = r.json()
 
-        except requests.exceptions.HTTPError,e:
+        except requests.exceptions.HTTPError, e:
             gen_log.error(e)
             return False
 
@@ -848,9 +838,10 @@ def fetch_node_info():
     gen_log.info("fetch nodes done!")
     gen_log.debug(NODES_DATABASE)
     cur_dir = os.path.split(os.path.realpath(__file__))[0]
-    open("%s/nodes_db_lean.json"%cur_dir,"w").write(json.dumps(NODES_DATABASE))
+    open("%s/nodes_db_lean.json" % cur_dir, "w").write(json.dumps(NODES_DATABASE))
 
     return True
+
 
 def get_ota_server_addr():
     ota_server_addr = CUSTOM_OTA_SERVER_ADDR
@@ -862,51 +853,51 @@ def get_ota_server_addr():
         ota_server_addr = 'https://us.wio.seeed.io'
 
     return ota_server_addr
-    
+
+
 def get_all_token():
     ota_server_addr = get_ota_server_addr()
-    
+
     token_list = []
     if OTA_SERVER != "customize":
         token_list = TOKENS
     else:
         gen_log.info("Fetching all token...")
-        
+
         if len(ACCOUNTS) == 0:
             gen_log.error("Please configure the user account!!!")
             return False
 
         for a in ACCOUNTS:
-            acc = {'email':a, 'password': ACCOUNTS[a]}
-            login_result_obj = {'token':'', }
+            acc = {'email': a, 'password': ACCOUNTS[a]}
+            login_result_obj = {'token': '', }
             try:
-                r = requests.post(ota_server_addr.rstrip('/')+'/v1/user/login', data=acc, verify=False)
+                r = requests.post(ota_server_addr.rstrip('/') + '/v1/user/login', data=acc, verify=False)
                 if r.status_code != requests.codes.ok:
                     r.raise_for_status()
                 else:
                     login_result_obj = r.json()
 
-            except requests.exceptions.HTTPError,e:
+            except requests.exceptions.HTTPError, e:
                 gen_log.error(e)
                 return False
 
-            #print login_result_obj
+            # print login_result_obj
             if 'status' in login_result_obj and login_result_obj['status'] != 200:
                 gen_log.error('error happened when logging in %s' % a)
                 gen_log.info(login_result_obj['msg'])
                 return False
-            
+
             token_list.append(login_result_obj['token'])
-    
-        
+
     if len(token_list) == 0:
         gen_log.error("Not found any user token!!!")
         return False
-        
-    return token_list
-        
-def main():
 
+    return token_list
+
+
+def main():
     global NODES_DATABASE
 
     ###--log_file_prefix=./server.log
@@ -925,17 +916,15 @@ def main():
         if not os.path.exists(db_file_path):
             if not fetch_node_info():
                 sys.exit(1)
-            #NODES_DATABASE = []
+                # NODES_DATABASE = []
         else:
             NODES_DATABASE = json.load(open(db_file_path))
             gen_log.info('load nodes database from json done!')
             gen_log.debug(NODES_DATABASE)
 
-
     app = myApplication()
     http_server = HTTPServer(app)
     http_server.listen(8080)
-
 
     tcp_server = DeviceServer()
     tcp_server.listen(8000)

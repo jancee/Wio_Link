@@ -32,8 +32,3 @@ if __name__ == '__main__':
 
     if not gen_and_build(build_phase, app_num, user_id, node_sn, node_name, server_ip, None, None):
         print get_error_msg()
-
-
-
-
-
