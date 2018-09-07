@@ -20,7 +20,7 @@
 #                pip install PyJWT
 #                pip install pycrypto
 #                pip install tornado-cors
-
+import weakref
 from datetime import timedelta
 import socket
 import json
@@ -30,6 +30,10 @@ import hashlib
 import hmac
 import binascii
 import os
+
+import gc
+
+import objgraph
 import psutil
 import tornado
 from Crypto.Cipher import AES
@@ -65,21 +69,22 @@ class DeviceConnection(object):
     state_waiters = {}
     state_happened = {}
 
-    def __init__(self, device_server, stream, address, conn_pool):
+    def __init__(self, device_server, stream, address):
         self.fw_version = 0.0
         self.recv_msg_cond = Condition()
         self.recv_msg = {}
         self.send_msg_sem = Semaphore(1)
         self.pending_request_cnt = 0
-        self.device_server = device_server
-        self.device_server_conn_pool = conn_pool
-        self.stream = stream
-        self.address = address
-        self.stream.set_nodelay(True)
-        self.stream.set_close_callback(self.on_close)
+        self.device_server = weakref.ref(device_server)
+        # self.device_server_conn_pool = conn_pool
+        self.stream = weakref.ref(stream)
+        # self.address = address
+        self.stream().set_nodelay(True)
+        self.stream().set_close_callback(self.on_close)
         self.timeout_handler_onlinecheck = None
         self.timeout_handler_offline = None
         self.killed = False
+        self.killedjunk = False
         self.is_junk = False
         self.sn = ""
         self.private_key = ""
@@ -100,7 +105,7 @@ class DeviceConnection(object):
     def secure_write(self, data):
         if self.cipher_down:
             cipher_text = self.cipher_down.encrypt(pad(data))
-            yield self.stream.write(cipher_text)
+            yield self.stream().write(cipher_text)
 
     @gen.coroutine
     def wait_hello(self):
@@ -129,14 +134,14 @@ class DeviceConnection(object):
 
             # query the sn from database
             node = None
-            cur = self.device_server.cur
+            cur = self.device_server().cur
             cur.execute('select * from nodes where node_sn="%s"' % sn)
             rows = cur.fetchall()
             if len(rows) > 0:
                 node = rows[0]
 
             if not node:
-                self.stream.write("sorry\r\n")
+                self.stream().write("sorry\r\n")
                 yield gen.sleep(0.1)
                 self.kill_myself()
                 gen_log.error("node sn not found")
@@ -158,17 +163,17 @@ class DeviceConnection(object):
                 gen_log.info("valid hello packet from node %s" % self.node_id)
 
                 # remove the junk connection of the same thing
-                if self.sn in self.device_server_conn_pool:
+                if self.sn in self.device_server().accepted_xchange_conns:
                     gen_log.info("%s device server will remove one junk connection of same sn: %s" % (
-                        self.device_server.role, self.sn))
-                    self.device_server_conn_pool[self.sn].kill_junk()
+                        self.device_server().role, self.sn))
+                    self.device_server().accepted_xchange_conns[self.sn].kill_junk()
                     gen_log.debug("self.device_server_conn_pool[self.sn].kill_junk()")
 
                 # save into conn pool
-                self.device_server_conn_pool[self.sn] = self
+                self.device_server().accepted_xchange_conns[self.sn] = self
                 gen_log.info('>>>>>>>>>>>>>>>>>>>>>')
-                gen_log.info('channel: %s' % self.device_server.role)
-                gen_log.info('size of conn pool: %d' % len(self.device_server_conn_pool))
+                gen_log.info('channel: %s' % self.device_server().role)
+                gen_log.info('size of conn pool: %d' % len(self.device_server().accepted_xchange_conns))
                 gen_log.info('<<<<<<<<<<<<<<<<<<<<<')
 
                 # init aes
@@ -183,10 +188,10 @@ class DeviceConnection(object):
 
                 cipher_text = self.iv + self.cipher_down.encrypt(pad("hello"))
                 gen_log.debug("cipher text: " + cipher_text.encode('hex'))
-                self.stream.write(cipher_text)
+                self.stream().write(cipher_text)
                 raise gen.Return(0)
             else:
-                self.stream.write("sorry\r\n")
+                self.stream().write("sorry\r\n")
                 yield gen.sleep(0.1)
                 self.kill_myself()
                 gen_log.error("signature not match: %s %s" % (sig, sig0))
@@ -205,7 +210,7 @@ class DeviceConnection(object):
         while not self.killed:
             msg = ""
             try:
-                msg = yield self.stream.read_bytes(16)
+                msg = yield self.stream().read_bytes(16)
                 msg = unpad(self.cipher_up.decrypt(msg))
                 line += msg
 
@@ -228,11 +233,11 @@ class DeviceConnection(object):
                     piece = piece.strip("\r\n")
 
                     if piece in ['##ALIVE##']:
-                        gen_log.debug('Node %s alive on %s channel!' % (self.node_id, self.device_server.role))
+                        gen_log.debug('Node %s alive on %s channel!' % (self.node_id, self.device_server().role))
                         continue
 
                     json_obj = json.loads(piece)
-                    gen_log.debug('Node %s recv json on %s channel' % (self.node_id, self.device_server.role))
+                    gen_log.debug('Node %s recv json on %s channel' % (self.node_id, self.device_server().role))
                     gen_log.debug('%s' % str(json_obj))
 
                     try:
@@ -296,7 +301,7 @@ class DeviceConnection(object):
 
             except iostream.StreamClosedError:
                 gen_log.error("StreamClosedError when reading from node %s on %s channel" % (
-                    self.node_id, self.device_server.role))
+                    self.node_id, self.device_server().role))
                 self.kill_myself()
                 return
             except ValueError:
@@ -310,7 +315,7 @@ class DeviceConnection(object):
 
     @gen.coroutine
     def _online_check(self):
-        gen_log.debug("heartbeat sent to node %s on %s channel" % (self.node_id, self.device_server.role))
+        gen_log.debug("heartbeat sent to node %s on %s channel" % (self.node_id, self.device_server().role))
         try:
             yield self.secure_write("##PING##")
             if self.timeout_handler_onlinecheck:
@@ -319,13 +324,13 @@ class DeviceConnection(object):
                                                                                   self._online_check)
         except iostream.StreamClosedError:
             gen_log.error(
-                "StreamClosedError when send ping to node %s on %s channel" % (self.node_id, self.device_server.role))
+                "StreamClosedError when send ping to node %s on %s channel" % (self.node_id, self.device_server().role))
             if self.timeout_handler_offline:
                 ioloop.IOLoop.current().remove_timeout(self.timeout_handler_offline)
             self.kill_myself()
 
     def _callback_when_offline(self):
-        gen_log.error("no heartbeat answer from node %s on %s channel, kill" % (self.node_id, self.device_server.role))
+        gen_log.error("no heartbeat answer from node %s on %s channel, kill" % (self.node_id, self.device_server().role))
         self.kill_myself()
 
     @gen.coroutine
@@ -350,7 +355,7 @@ class DeviceConnection(object):
         if self.timeout_handler_offline:
             ioloop.IOLoop.current().remove_timeout(self.timeout_handler_offline)
         self.timeout_handler_offline = ioloop.IOLoop.current().call_later(
-            HEARTBEAT_PERIOD_SEC + HEARTBEAT_NEGATIVE_CHECK_DELAY_SEC, \
+            HEARTBEAT_PERIOD_SEC + HEARTBEAT_NEGATIVE_CHECK_DELAY_SEC,
             self._callback_when_offline)
 
         ## loop reading the stream input
@@ -402,16 +407,19 @@ class DeviceConnection(object):
     def kill_myself(self):
         if self.killed:
             return
-        self.stream.close()
+        gen_log.debug("kill_myself: %s" % self)
+        self.stream().close()
         self.killed = True
 
     def kill_junk(self):
-        self.is_junk = True
+        gen_log.debug("kill_junk: %s" % self)
+        self.killedjunk = True
         self.kill_myself()
 
     def on_close(self):
-
-        gen_log.debug("i'm closed on %s channel, %s..." % (self.device_server.role, self))
+        gen_log.debug("on_close")
+        self.stream().set_close_callback(None)
+        gen_log.debug("i'm closed on %s channel, %s..." % (self.device_server().role, self))
 
         self.send_msg_sem.release()
 
@@ -423,17 +431,19 @@ class DeviceConnection(object):
             ioloop.IOLoop.current().remove_timeout(self.timeout_handler_offline)
             self.timeout_handler_offline = None
 
-        if self.sn in self.device_server_conn_pool and self.device_server_conn_pool[self.sn] == self:
-            gen_log.debug("del self.device_server_conn_pool[self.sn]")
-            del self.device_server_conn_pool[self.sn]
+        if self.sn in self.device_server().accepted_xchange_conns and self.device_server().accepted_xchange_conns[
+            self.sn] == self:
+            gen_log.debug("del self.device_server.accepted_xchange_conns[self.sn]")
+            del self.device_server.accepted_xchange_conns[self.sn]
 
         self.sn = ""
-        self.stream.set_close_callback(None)
+        self.stream().set_close_callback(None)
         # break the ref circle
-        self.stream = None
-        self.address = None
-        self.device_server_conn_pool = None
-        self.device_server = None
+        del self.stream
+        del self.device_server
+
+        # objgraph.show_backrefs(self.on_close, max_depth=10, filename = "direct.png")
+        print "_gcleak ref count1 :%d" % (sys.getrefcount(self))
 
 
 class DeviceServer(TCPServer):
@@ -441,6 +451,7 @@ class DeviceServer(TCPServer):
     accepted_ota_conns = {}
 
     def __init__(self, db_conn, cursor, role):
+        self.aaa = 0
         self.conn = db_conn
         self.cur = cursor
         self.role = role
@@ -454,8 +465,19 @@ class DeviceServer(TCPServer):
 
     @gen.coroutine
     def handle_stream(self, stream, address):
-        conn = DeviceConnection(self, stream, address, self.conn_pool)
+        conn = DeviceConnection(self, stream, address)
         conn.start_serving()
+
+        gen_log.debug(self)
+
+        self.aaa = self.aaa + 1
+        gen_log.debug("connect_request_count %s", str(self.aaa))
+
+        # stream.close()
+        # stream.set_close_callback(None)
+        # del conn
+
+        # objgraph.show_backrefs(conn, max_depth=10, filename="direct.png")
 
 
 class myApplication(web.Application):
@@ -559,7 +581,13 @@ class Statistics(object):
         gen_log.info('conn pool size of xchange: {}'.format(cnt1))
         gen_log.info('conn pool size of ota    : {}'.format(cnt2))
         gen_log.info('rough memory per conn    : {}'.format(self.sizeof_fmt(mem_per_conn)))
+        gen_log.info('gc threshold    : {}'.format(gc.get_threshold()))
         gen_log.info(self.report_statistics)
+
+        objgraph.show_growth()
+
+        objgraph.show_most_common_types(20)
+
         gen_log.info('<<<<<<<<<<<<<<<<<<<<<')
 
 
@@ -583,6 +611,13 @@ def main():
     except lite.Error, e:
         gen_log.error(e)
         sys.exit(1)
+
+    gen_log.info('GV<<<<<')
+    gc.enable()
+    gc.set_debug(gc.DEBUG_COLLECTABLE | gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_INSTANCES | gc.DEBUG_OBJECTS | gc.DEBUG_LEAK)
+    # gc.disable()
+    gen_log.info(gc.isenabled())
+    gen_log.info('GV<<<<<')
 
     app = myApplication(conn, cur)
     http_server = HTTPServer(app, xheaders=True)
