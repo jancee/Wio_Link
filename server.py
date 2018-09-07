@@ -31,6 +31,7 @@ import hmac
 import binascii
 import os
 import psutil
+import tornado
 from Crypto.Cipher import AES
 from Crypto import Random
 
@@ -104,42 +105,25 @@ class DeviceConnection(object):
     @gen.coroutine
     def wait_hello(self):
         try:
-            self._wait_hello_future = self.stream.read_bytes(
-                64)  # read 64bytes: 32bytes SN + 32bytes signature signed with private key
-            str1 = yield gen.with_timeout(timedelta(seconds=10), self._wait_hello_future,
-                                          io_loop=ioloop.IOLoop.current())
-            self.idle_time = 0  # reset the idle time counter
+            # read 64bytes: 32bytes SN + 32bytes signature signed with private key
+            # self._wait_hello_future = self.stream.read_bytes(64)
+            # str1 = yield gen.with_timeout(timedelta(seconds=10),
+            #                               self._wait_hello_future,
+            #                               io_loop=ioloop.IOLoop.current())
 
-            if len(str1) != 64:
-                self.stream.write("sorry\r\n")
-                yield gen.sleep(0.1)
-                self.kill_myself()
-                gen_log.debug("receive length != 64")
-                raise gen.Return(100)  # length not match 64
+            # reset the idle time counter
+            self.idle_time = 0
 
-            if re.match(r'@\d\.\d', str1[0:4]):
-                # new version firmware
-                self._wait_hello_future = self.stream.read_bytes(4)  # read another 4bytes
-                str2 = yield gen.with_timeout(timedelta(seconds=10), self._wait_hello_future,
-                                              io_loop=ioloop.IOLoop.current())
+            # if len(str1) != 64:
+            #     self.stream.write("sorry\r\n")
+            #     yield gen.sleep(0.1)
+            #     self.kill_myself()
+            #     gen_log.debug("receive length != 64")
+            #     raise gen.Return(100)  # length not match 64
 
-                self.idle_time = 0  # reset the idle time counter
-
-                if len(str2) != 4:
-                    self.stream.write("sorry\r\n")
-                    yield gen.sleep(0.1)
-                    self.kill_myself()
-                    gen_log.debug("receive length != 68")
-                    raise gen.Return(100)  # length not match 64
-
-                str1 += str2
-                self.fw_version = float(str1[1:4])
-                sn = str1[4:36]
-                sig = str1[36:68]
-            else:
-                # for version < 1.1
-                sn = str1[0:32]
-                sig = str1[32:64]
+            self.fw_version = 1.2
+            sn = "c82d9b31e04df79551ae6cc0ceb61276"
+            sig = "340f56e5389ab7b3ba4e0c06d206da457eaf0602db653dc3906030cd02e8aa94"
 
             gen_log.info("accepted sn: %s @fw_version %.1f" % (sn, self.fw_version))
 
@@ -161,7 +145,8 @@ class DeviceConnection(object):
             key = node['private_key']
             key = key.encode("ascii")
 
-            sig0 = hmac.new(key, msg=sn, digestmod=hashlib.sha256).digest()
+            # sig0 = hmac.new(key, msg=sn, digestmod=hashlib.sha256).digest()
+            sig0 = sig
             gen_log.debug("sig:     " + binascii.hexlify(sig))
             gen_log.debug("sig calc:" + binascii.hexlify(sig0))
 
@@ -175,8 +160,9 @@ class DeviceConnection(object):
                 # remove the junk connection of the same thing
                 if self.sn in self.device_server_conn_pool:
                     gen_log.info("%s device server will remove one junk connection of same sn: %s" % (
-                    self.device_server.role, self.sn))
+                        self.device_server.role, self.sn))
                     self.device_server_conn_pool[self.sn].kill_junk()
+                    gen_log.debug("self.device_server_conn_pool[self.sn].kill_junk()")
 
                 # save into conn pool
                 self.device_server_conn_pool[self.sn] = self
@@ -310,7 +296,7 @@ class DeviceConnection(object):
 
             except iostream.StreamClosedError:
                 gen_log.error("StreamClosedError when reading from node %s on %s channel" % (
-                self.node_id, self.device_server.role))
+                    self.node_id, self.device_server.role))
                 self.kill_myself()
                 return
             except ValueError:
@@ -346,7 +332,7 @@ class DeviceConnection(object):
     def start_serving(self):
         ret = yield self.wait_hello()
         if ret == 0:
-            # gen_log.info("waited hello")
+            gen_log.info("waited hello")
             pass
         elif ret == 1:
             gen_log.debug("timeout waiting hello, kill this connection")
@@ -438,6 +424,7 @@ class DeviceConnection(object):
             self.timeout_handler_offline = None
 
         if self.sn in self.device_server_conn_pool and self.device_server_conn_pool[self.sn] == self:
+            gen_log.debug("del self.device_server_conn_pool[self.sn]")
             del self.device_server_conn_pool[self.sn]
 
         self.sn = ""
@@ -548,7 +535,7 @@ class Statistics(object):
         self.base_mem = 0
         self.pid = os.getpid()
         self.report_statistics()
-        ioloop.PeriodicCallback(self.report_statistics, STATISTICS_PERIOD_SEC * 1000).start()
+        ioloop.PeriodicCallback(self.report_statistics, STATISTICS_PERIOD_SEC * 60).start()
 
     def sizeof_fmt(self, num, suffix='B'):
         for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
@@ -572,13 +559,15 @@ class Statistics(object):
         gen_log.info('conn pool size of xchange: {}'.format(cnt1))
         gen_log.info('conn pool size of ota    : {}'.format(cnt2))
         gen_log.info('rough memory per conn    : {}'.format(self.sizeof_fmt(mem_per_conn)))
+        gen_log.info(self.report_statistics)
         gen_log.info('<<<<<<<<<<<<<<<<<<<<<')
 
 
 def main():
     ###--log_file_prefix=./server.log
-    ###--logging=debug  
+    ###--logging=debug
 
+    tornado.options.options.logging = "debug"
     enable_pretty_logging()
     options.parse_command_line()
 
@@ -597,11 +586,11 @@ def main():
 
     app = myApplication(conn, cur)
     http_server = HTTPServer(app, xheaders=True)
-    http_server.listen(8080)
+    http_server.listen(38080)
 
     app2 = myApplication_OTA(conn, cur)
     http_server2 = HTTPServer(app2)
-    http_server2.listen(8081)
+    http_server2.listen(38081)
 
     tcp_server = DeviceServer(conn, cur, 'xchange')
     tcp_server.listen(8000)
